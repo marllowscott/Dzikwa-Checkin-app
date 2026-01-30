@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dzikwa Check-In System</title>
+  <meta name="description"
+    content="Professional digital check-in system for Dzikwa. Track attendance with ease and precision." />
+  <meta name="author" content="Dzikwa" />
+  <meta name="keywords" content="dzikwa check-in system, attendance tracking, digital workplace, employee management" />
+
+  <meta property="og:title" content="Dzikwa Check-In System" />
+  <meta property="og:description"
+    content="Professional digital check-in system for Dzikwa. Track attendance with ease and precision." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="/og-image.png" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@dzikwa" />
+  <meta name="twitter:title" content="Dzikwa Check-In System" />
+  <meta name="twitter:description"
+    content="Professional digital check-in system for Dzikwa. Track attendance with ease and precision." />
+  <meta name="twitter:image" content="/og-image.png" />
+
+  <link rel="canonical" href="https://dzikwa-checkin.com" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Source+Serif+Pro:ital,wght@0,200..900;1,200..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap"
+    rel="stylesheet">
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+  <script>
+    // Register service worker for offline caching
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('SW registered: ', registration);
+          })
+          .catch((registrationError) => {
+            console.log('SW registration failed: ', registrationError);
+          });
+      });
+    }
+  </script>
+</body>
+
+</html>

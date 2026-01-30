@@ -1,0 +1,150 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Digital Check-In System Design */
+
+@layer base {
+  :root {
+    /* Dzikwa Brand Colors */
+    --background: 210 40% 98%;
+    /* Light background */
+    --foreground: 210 30% 15%;
+    /* Dark text */
+
+    --card: 210 40% 96%;
+    --card-foreground: 210 30% 15%;
+
+    --popover: 210 40% 96%;
+    --popover-foreground: 210 30% 15%;
+
+    --primary: 188 89% 22%;
+    /* Dzikwa primary blue-teal */
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 188 89% 18%;
+
+    --secondary: 188 89% 85%;
+    /* Light blue-teal */
+    --secondary-foreground: 210 30% 15%;
+
+    --muted: 210 20% 90%;
+    --muted-foreground: 210 15% 45%;
+
+    --accent: 188 89% 95%;
+    /* Very light blue-teal */
+    --accent-foreground: 210 30% 15%;
+
+    --success: 142 76% 45%;
+    /* Green for success states */
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 76% 15%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 38 92% 15%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 85%;
+    --input: 210 20% 85%;
+    --ring: 188 89% 22%;
+
+    --radius: 0.4375rem;
+    /* 7px for all elements */
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(188 89% 22%), hsl(188 89% 18%));
+    --gradient-success: linear-gradient(135deg, hsl(142 76% 45%), hsl(142 76% 35%));
+    --gradient-destructive: linear-gradient(135deg, hsl(0 84% 60%), hsl(0 84% 50%));
+    --gradient-card: linear-gradient(145deg, hsl(210 40% 96%), hsl(210 40% 94%));
+
+    /* Shadows - Enhanced for 3D effect */
+    --shadow-card: 0 4px 20px -4px hsl(230 25% 8% / 0.4), 0 2px 8px -2px hsl(230 25% 8% / 0.2);
+    --shadow-button: 0 4px 12px -2px hsl(230 25% 8% / 0.3), 0 2px 4px -1px hsl(230 25% 8% / 0.2);
+    --shadow-elevation: 0 12px 40px -8px hsl(230 25% 8% / 0.5), 0 4px 16px -4px hsl(230 25% 8% / 0.3);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: all 0.15s ease-out;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 210 30% 8%;
+    --foreground: 210 20% 90%;
+
+    --card: 210 25% 12%;
+    --card-foreground: 210 20% 90%;
+
+    --popover: 210 25% 12%;
+    --popover-foreground: 210 20% 90%;
+
+    --primary: 188 89% 27%;
+    --primary-foreground: 210 30% 8%;
+    --primary-hover: 188 89% 32%;
+
+    --secondary: 188 89% 18%;
+    --secondary-foreground: 210 20% 90%;
+
+    --muted: 210 20% 15%;
+    --muted-foreground: 210 15% 65%;
+
+    --accent: 188 89% 20%;
+    --accent-foreground: 210 20% 90%;
+
+    --success: 142 76% 50%;
+    --success-foreground: 210 30% 8%;
+    --success-light: 142 76% 12%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 210 30% 8%;
+    --warning-light: 38 92% 12%;
+
+    --destructive: 0 84% 65%;
+    --destructive-foreground: 210 30% 8%;
+
+    --border: 210 20% 18%;
+    --input: 210 20% 16%;
+    --ring: 188 89% 27%;
+
+    /* Dark mode gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(188 89% 27%), hsl(188 89% 22%));
+    --gradient-success: linear-gradient(135deg, hsl(142 76% 50%), hsl(142 76% 40%));
+    --gradient-destructive: linear-gradient(135deg, hsl(0 84% 65%), hsl(0 84% 55%));
+    --gradient-card: linear-gradient(145deg, hsl(210 25% 12%), hsl(210 30% 8%));
+
+    /* Dark mode shadows */
+    --shadow-card: 0 4px 20px -4px hsl(230 30% 6% / 0.5), 0 2px 8px -2px hsl(230 30% 6% / 0.3);
+    --shadow-button: 0 4px 12px -2px hsl(230 30% 6% / 0.4), 0 2px 4px -1px hsl(230 30% 6% / 0.3);
+    --shadow-elevation: 0 12px 40px -8px hsl(230 30% 6% / 0.6), 0 4px 16px -4px hsl(230 30% 6% / 0.4);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+}
