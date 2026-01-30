@@ -1,16 +1,30 @@
 const CACHE_NAME = 'dzikwa-checkin-v1';
+
+// Essential URLs to cache - only cache what we're sure exists
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
-  '/static/css/main.css',
-  '/dzikwa-logo.svg'
+  '/static/css/main.css'
 ];
 
-// Install event - cache resources
+// Install event - cache resources with error handling
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
+      .then(cache => {
+        console.log('Opened cache');
+        // Cache each URL individually to handle failures gracefully
+        return Promise.allSettled(
+          urlsToCache.map(url =>
+            cache.add(url).catch(err => {
+              console.warn(`Failed to cache ${url}:`, err);
+            })
+          )
+        );
+      })
+      .catch(err => {
+        console.error('Cache installation failed:', err);
+      })
   );
 });
 
@@ -30,7 +44,7 @@ self.addEventListener('fetch', event => {
         return fetch(fetchRequest).then(
           response => {
             // Check if valid response
-            if(!response || response.status !== 200 || response.type !== 'basic') {
+            if (!response || response.status !== 200 || response.type !== 'basic') {
               return response;
             }
 
@@ -39,7 +53,9 @@ self.addEventListener('fetch', event => {
 
             caches.open(CACHE_NAME)
               .then(cache => {
-                cache.put(event.request, responseToCache);
+                cache.put(event.request, responseToCache).catch(err => {
+                  console.warn('Failed to cache response:', err);
+                });
               });
 
             return response;
@@ -47,7 +63,13 @@ self.addEventListener('fetch', event => {
         ).catch(() => {
           // Offline fallback for HTML requests
           if (event.request.destination === 'document') {
-            return caches.match('/');
+            return caches.match('/').catch(() => {
+              // Return a basic offline page if cache is empty
+              return new Response('Offline - Please check your internet connection', {
+                status: 503,
+                statusText: 'Service Unavailable'
+              });
+            });
           }
         });
       })
@@ -61,6 +83,7 @@ self.addEventListener('activate', event => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheName !== CACHE_NAME) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })

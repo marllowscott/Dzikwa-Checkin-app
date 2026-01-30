@@ -3,11 +3,22 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+// Development warning for missing environment variables
 if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing Supabase environment variables. Please check your .env file.')
+  if (import.meta.env.DEV) {
+    console.warn(
+      '⚠️ Missing Supabase environment variables.\n' +
+      'Please create a .env file with:\n' +
+      'VITE_SUPABASE_URL=https://your-project-id.supabase.co\n' +
+      'VITE_SUPABASE_ANON_KEY=your-supabase-anon-key\n\n' +
+      'Get these from: https://supabase.com/dashboard > Project > Settings > API'
+    );
+  } else {
+    console.error('❌ Supabase configuration missing. Please check environment variables.');
+  }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+export const supabase = createClient(supabaseUrl || '', supabaseKey || '', {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
