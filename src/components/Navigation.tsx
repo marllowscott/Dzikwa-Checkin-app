@@ -55,26 +55,51 @@ export const Navigation = memo(() => {
 
   useEffect(() => {
     const checkAdmin = () => {
-      setIsAdmin(!!localStorage.getItem("isAdmin"));
+      const token = localStorage.getItem('adminToken');
+      const adminStatus = localStorage.getItem('isAdmin');
+
+      if (adminStatus === 'true' && token) {
+        // Use localStorage-based auth (no API call needed)
+        console.log('Admin verified via localStorage');
+        setIsAdmin(true);
+      } else {
+        setIsAdmin(false);
+      }
     };
 
     checkAdmin();
     // Listen for storage changes
     window.addEventListener('storage', checkAdmin);
-    return () => window.removeEventListener('storage', checkAdmin);
+    // Also listen for custom admin state change events
+    window.addEventListener('adminStateChange', checkAdmin);
+    return () => {
+      window.removeEventListener('storage', checkAdmin);
+      window.removeEventListener('adminStateChange', checkAdmin);
+    };
   }, []);
 
-  const navItems = useMemo(() => [
-    { href: "/", label: "Check In/Out", icon: CheckInIcon },
-    { href: "/logs", label: "View Logs", icon: ViewLogsIcon },
-    ...(isAdmin
-      ? [
-        { href: "/admin-dashboard", label: "Admin", icon: AdminIcon },
-        { href: "/stored-records", label: "Records Storage", icon: Archive }
-      ]
-      : [{ href: "/admin-login", label: "Admin", icon: AdminIcon }]
-    ),
-  ], [isAdmin]);
+  const navItems = useMemo(() => {
+    const isGuestPage = location.pathname === '/guest-signup';
+
+    if (isGuestPage) {
+      // Only show minimal navigation for guests
+      return [
+        { href: "/", label: "Home", icon: Home }
+      ];
+    }
+
+    return [
+      { href: "/", label: "Check In/Out", icon: CheckInIcon },
+      { href: "/logs", label: "View Logs", icon: ViewLogsIcon },
+      ...(isAdmin
+        ? [
+          { href: "/admin-dashboard", label: "Admin", icon: AdminIcon },
+          { href: "/stored-records", label: "Records Storage", icon: Archive }
+        ]
+        : [{ href: "/admin-login", label: "Admin", icon: AdminIcon }]
+      ),
+    ];
+  }, [isAdmin, location.pathname]);
 
   return (
     <nav className="sticky top-0 z-50 bg-card/80 backdrop-blur-md shadow-card">

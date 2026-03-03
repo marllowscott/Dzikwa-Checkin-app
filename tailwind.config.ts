@@ -14,8 +14,10 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Space Grotesk', 'sans-serif'],
-        heading: ['Space Grotesk', 'sans-serif'],
+        sans: ['Montserrat', 'sans-serif'],
+        heading: ['Arvo', 'serif'],
+        orbitron: ['Orbitron', 'sans-serif'],
+        josefin: ['Josefin Sans', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",

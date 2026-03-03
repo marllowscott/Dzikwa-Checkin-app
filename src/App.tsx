@@ -11,8 +11,11 @@ const Logs = lazy(() => import("./pages/Logs"));
 const CheckInTest = lazy(() => import("./pages/CheckInTest"));
 const AdminLogin = lazy(() => import("./pages/AdminLogin"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const GuestSignUp = lazy(() => import("./pages/GuestSignUp"));
 const StoredRecords = lazy(() => import("./pages/StoredRecords"));
 const AnimatedLogoShowcase = lazy(() => import("./pages/AnimatedLogoShowcase"));
+const WorkshopPage = lazy(() => import("./pages/WorkshopPage"));
+const GuestDashboard = lazy(() => import("./pages/GuestDashboard"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Loading component
@@ -36,14 +39,21 @@ const queryClient = new QueryClient({
 // Route guard component for admin routes
 const AdminRouteGuard = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
+  const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
-  useEffect(() => {
-    // Clear admin session when navigating away from admin dashboard
-    if (location.pathname !== "/admin-dashboard") {
-      localStorage.removeItem("isAdmin");
-    }
-  }, [location]);
+  console.log('🛡️ AdminRouteGuard check:', {
+    pathname: location.pathname,
+    isAdmin: isAdmin,
+    shouldRedirect: location.pathname === '/admin-dashboard' && !isAdmin
+  });
 
+  // Only allow access to admin-dashboard if authenticated
+  if (location.pathname === '/admin-dashboard' && !isAdmin) {
+    console.log('🚫 Redirecting to login - not authenticated');
+    return <Navigate to="/admin-login" replace />;
+  }
+
+  console.log('✅ AdminRouteGuard allowing access');
   return <>{children}</>;
 };
 
@@ -77,6 +87,11 @@ const App = () => (
                 <AdminLogin />
               </Suspense>
             } />
+            <Route path="/guest-signup" element={
+              <Suspense fallback={<PageLoader />}>
+                <GuestSignUp />
+              </Suspense>
+            } />
             <Route path="/admin-dashboard" element={
               <Suspense fallback={<PageLoader />}>
                 <AdminDashboard />
@@ -90,6 +105,16 @@ const App = () => (
             <Route path="/animated-logo" element={
               <Suspense fallback={<PageLoader />}>
                 <AnimatedLogoShowcase />
+              </Suspense>
+            } />
+            <Route path="/workshop" element={
+              <Suspense fallback={<PageLoader />}>
+                <WorkshopPage />
+              </Suspense>
+            } />
+            <Route path="/guest-dashboard" element={
+              <Suspense fallback={<PageLoader />}>
+                <GuestDashboard />
               </Suspense>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
@@ -106,3 +131,5 @@ const App = () => (
 );
 
 export default App;
+
+

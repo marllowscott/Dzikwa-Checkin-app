@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase, SavedLog } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Download, FileText, Calendar, Archive, Edit, Trash2 } from "lucide-react";
+import { Loader2, Download, FileText, Calendar, Archive, Edit, Trash2, Eye, Search, X, Save, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MonthlyLogs {
@@ -22,6 +22,7 @@ export default function StoredRecords() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingLog, setEditingLog] = useState<SavedLog | null>(null);
+  const [viewingLog, setViewingLog] = useState<{ log: SavedLog; type: 'json' | 'csv' | 'summary' } | null>(null);
   const [editForm, setEditForm] = useState({
     date: "",
     month: "",
@@ -184,12 +185,24 @@ export default function StoredRecords() {
     }
   };
 
+  const openViewDialog = (log: SavedLog, type: 'json' | 'csv' | 'summary') => {
+    setViewingLog({ log, type });
+  };
+
   const openEditDialog = (log: SavedLog) => {
     setEditingLog(log);
     setEditForm({
       date: log.date,
       month: log.month,
       summary_content: log.summary_content
+    });
+  };
+
+  const handleBackToMain = () => {
+    navigate("/");
+    toast({
+      title: "Navigation",
+      description: "Returning to main check-in interface.",
     });
   };
 
@@ -205,54 +218,6 @@ export default function StoredRecords() {
             </div>
           </div>
         </div>
-
-        {/* Edit Dialog */}
-        <Dialog open={!!editingLog} onOpenChange={() => setEditingLog(null)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Edit Stored Record</DialogTitle>
-            </DialogHeader>
-            {editingLog && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Date</label>
-                    <Input
-                      type="date"
-                      value={editForm.date}
-                      onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Month (YYYY-MM)</label>
-                    <Input
-                      value={editForm.month}
-                      onChange={(e) => setEditForm({ ...editForm, month: e.target.value })}
-                      placeholder="2024-09"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Summary Content</label>
-                  <Textarea
-                    value={editForm.summary_content}
-                    onChange={(e) => setEditForm({ ...editForm, summary_content: e.target.value })}
-                    rows={6}
-                    placeholder="Edit the summary content..."
-                  />
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" onClick={() => setEditingLog(null)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleEdit}>
-                    Save Changes
-                  </Button>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
       </div>
     );
   }
@@ -264,7 +229,7 @@ export default function StoredRecords() {
       <div className="container mx-auto px-4 py-8">
         <div className="space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
                 <Archive className="w-8 h-8 text-primary" />
@@ -274,6 +239,10 @@ export default function StoredRecords() {
                 Access and manage archived daily check-in logs
               </p>
             </div>
+            <Button variant="outline" onClick={handleBackToMain} className="w-full sm:w-auto">
+              <Home className="w-4 h-4 mr-2" />
+              Back to Main
+            </Button>
           </div>
 
           {/* Search */}
@@ -337,6 +306,33 @@ export default function StoredRecords() {
                             <Button
                               variant="outline"
                               size="sm"
+                              onClick={() => openViewDialog(log, 'json')}
+                              className="flex items-center gap-2"
+                            >
+                              <Eye className="w-4 h-4" />
+                              View JSON
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openViewDialog(log, 'csv')}
+                              className="flex items-center gap-2"
+                            >
+                              <Eye className="w-4 h-4" />
+                              View CSV
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openViewDialog(log, 'summary')}
+                              className="flex items-center gap-2"
+                            >
+                              <Eye className="w-4 h-4" />
+                              View Summary
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               onClick={() => downloadContent(log.json_content, `${log.date}_DailyLogs.json`, 'application/json')}
                               className="flex items-center gap-2"
                             >
@@ -390,6 +386,115 @@ export default function StoredRecords() {
           </div>
         </div>
       </div>
+
+      {/* View Dialog */}
+      <Dialog open={!!viewingLog} onOpenChange={() => setViewingLog(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              {viewingLog && `${viewingLog.log.date} - ${viewingLog.type.toUpperCase()} View`}
+            </DialogTitle>
+          </DialogHeader>
+          {viewingLog && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>{viewingLog.log.total_records} records</span>
+                <span>Saved on {new Date(viewingLog.log.saved_at).toLocaleDateString()}</span>
+              </div>
+              <div className="border rounded-lg p-4 overflow-auto max-h-[60vh] bg-muted/30">
+                {viewingLog.type === 'json' && (
+                  <pre className="text-xs font-mono whitespace-pre-wrap">
+                    {JSON.stringify(JSON.parse(viewingLog.log.json_content), null, 2)}
+                  </pre>
+                )}
+                {viewingLog.type === 'csv' && (
+                  <pre className="text-xs font-mono whitespace-pre-wrap">
+                    {viewingLog.log.csv_content}
+                  </pre>
+                )}
+                {viewingLog.type === 'summary' && (
+                  <pre className="text-sm whitespace-pre-wrap">
+                    {viewingLog.log.summary_content}
+                  </pre>
+                )}
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const content = viewingLog.type === 'json' ? viewingLog.log.json_content :
+                      viewingLog.type === 'csv' ? viewingLog.log.csv_content :
+                        viewingLog.log.summary_content;
+                    const filename = `${viewingLog.log.date}_DailyLogs_${viewingLog.type}.${viewingLog.type === 'summary' ? 'txt' : viewingLog.type}`;
+                    const mimeType = viewingLog.type === 'json' ? 'application/json' :
+                      viewingLog.type === 'csv' ? 'text/csv' : 'text/plain';
+                    downloadContent(content, filename, mimeType);
+                  }}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download {viewingLog.type.toUpperCase()}
+                </Button>
+                <Button variant="outline" onClick={() => setViewingLog(null)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingLog} onOpenChange={() => setEditingLog(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="w-5 h-5" />
+              Edit Stored Record
+            </DialogTitle>
+          </DialogHeader>
+          {editingLog && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Date</label>
+                  <Input
+                    type="date"
+                    value={editForm.date}
+                    onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Month (YYYY-MM)</label>
+                  <Input
+                    value={editForm.month}
+                    onChange={(e) => setEditForm({ ...editForm, month: e.target.value })}
+                    placeholder="2024-09"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Summary Content</label>
+                <Textarea
+                  value={editForm.summary_content}
+                  onChange={(e) => setEditForm({ ...editForm, summary_content: e.target.value })}
+                  rows={6}
+                  placeholder="Edit the summary content..."
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setEditingLog(null)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleEdit}>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

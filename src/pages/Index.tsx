@@ -2,33 +2,61 @@ import { useState } from "react";
 import { Navigation } from "@/components/Navigation";
 import { CheckInForm } from "@/components/CheckInForm";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/lib/supabase";
+import { createCheckIn, createCheckOut, checkInGuest, checkOutGuest, checkInChild, checkOutChild, supabase } from "@/lib/supabase";
 
 export default function Index() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleCheckIn = async (fullName: string) => {
+  // Unified check-in handler for all domains
+  const handleCheckIn = async (personId: string, domain: string) => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('check_ins')
-        .insert([
-          {
-            full_name: fullName.trim(),
-            check_in_time: new Date().toISOString(),
-          }
-        ])
-        .select()
-        .single();
+      if (domain === 'employee') {
+        const { data, error } = await createCheckIn(personId);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      toast({
-        title: "Checked In Successfully!",
-        description: `Welcome ${fullName}. Logged in at ${new Date().toLocaleTimeString()}`,
-        variant: "default",
-      });
+        toast({
+          title: "Checked In Successfully!",
+          description: `Welcome ${data?.full_name || 'Employee'}. Logged in at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
+      } else if (domain === 'guest') {
+        // Get guest details first
+        const { data: guest } = await supabase
+          .from('guests')
+          .select('full_name')
+          .eq('id', personId)
+          .single();
+
+        const { data, error } = await checkInGuest(personId, 'Visit');
+
+        if (error) throw error;
+
+        toast({
+          title: "Checked In Successfully!",
+          description: `Welcome ${guest?.full_name || 'Guest'}. Logged in at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
+      } else if (domain === 'child') {
+        // Get child details first
+        const { data: child } = await supabase
+          .from('dzikwa_children')
+          .select('full_name')
+          .eq('id', personId)
+          .single();
+
+        const { data, error } = await checkInChild(personId);
+
+        if (error) throw error;
+
+        toast({
+          title: "Checked In Successfully!",
+          description: `Welcome ${child?.full_name || 'Child'}. Logged in at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
+      }
     } catch (error) {
       console.error('Check-in error:', error);
       toast({
@@ -41,41 +69,74 @@ export default function Index() {
     }
   };
 
-  const handleCheckOut = async (fullName: string) => {
+  // Unified check-out handler for all domains
+  const handleCheckOut = async (personId: string, domain: string) => {
     setIsLoading(true);
     try {
-      // Find the latest active check-in for this person
-      const { data: activeCheckIn, error: fetchError } = await supabase
-        .from('check_ins')
-        .select('*')
-        .eq('full_name', fullName.trim())
-        .is('check_out_time', null)
-        .order('check_in_time', { ascending: false })
-        .limit(1)
-        .single();
+      if (domain === 'employee') {
+        const { data, error } = await createCheckOut(personId);
 
-      if (fetchError || !activeCheckIn) {
-        throw new Error('No active check-in found for this person');
+        if (error) throw error;
+
+        toast({
+          title: "Checked Out Successfully!",
+          description: `Goodbye ${data?.full_name || 'Employee'}. Logged out at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
+      } else if (domain === 'guest') {
+        // Find the active guest check-in
+        const { data: activeCheckIn } = await supabase
+          .from('guest_check_ins')
+          .select('*, guests!full_name(*)')
+          .eq('guest_id', personId)
+          .is('check_out_time', null)
+          .order('check_in_time', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!activeCheckIn) {
+          throw new Error('No active check-in found');
+        }
+
+        const { data, error } = await checkOutGuest(activeCheckIn.id);
+
+        if (error) throw error;
+
+        toast({
+          title: "Checked Out Successfully!",
+          description: `Goodbye ${activeCheckIn.guests?.full_name || 'Guest'}. Logged out at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
+      } else if (domain === 'child') {
+        // Find the active child check-in
+        const { data: activeCheckIn } = await supabase
+          .from('child_check_ins')
+          .select('*, dzikwa_children!full_name(*)')
+          .eq('child_id', personId)
+          .is('check_out_time', null)
+          .order('check_in_time', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!activeCheckIn) {
+          throw new Error('No active check-in found');
+        }
+
+        const { data, error } = await checkOutChild(activeCheckIn.id);
+
+        if (error) throw error;
+
+        toast({
+          title: "Checked Out Successfully!",
+          description: `Goodbye ${activeCheckIn.dzikwa_children?.full_name || 'Child'}. Logged out at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
       }
-
-      // Update with check-out time
-      const { error: updateError } = await supabase
-        .from('check_ins')
-        .update({ check_out_time: new Date().toISOString() })
-        .eq('id', activeCheckIn.id);
-
-      if (updateError) throw updateError;
-
-      toast({
-        title: "Checked Out Successfully!",
-        description: `Goodbye ${fullName}. Logged out at ${new Date().toLocaleTimeString()}`,
-        variant: "default",
-      });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Check-out error:', error);
       toast({
         title: "Check-out Failed",
-        description: "No active check-in found or there was an error processing your check-out.",
+        description: error.message || "No active check-in found or there was an error processing your check-out.",
         variant: "destructive",
       });
     } finally {

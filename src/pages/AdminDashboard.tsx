@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Navigation } from "@/components/Navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,7 @@ interface MonthlyData {
   days: { [day: string]: CheckInRecord[] };
 }
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Users, TrendingUp, Loader2, Download, Edit, Trash2, Plus, Filter, LogOut, FileText, Upload, Eye, File, Save, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { Calendar, Users, TrendingUp, Loader2, Download, Edit, Trash2, Plus, Filter, LogOut, FileText, Upload, Eye, File, Save, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, Home, RefreshCw } from "lucide-react";
 import { CheckInIcon } from "@/components/ui/CheckInIcon";
 import { AdminIcon } from "@/components/ui/AdminIcon";
 import { LogoutIcon } from "@/components/ui/LogoutIcon";
@@ -69,45 +70,380 @@ export default function AdminDashboard() {
   const [activeCheckIns, setActiveCheckIns] = useState<CheckInRecord[]>([]);
   const [selectedSavedLog, setSelectedSavedLog] = useState<SavedLog | null>(null);
   const [showSavedLogModal, setShowSavedLogModal] = useState(false);
+
+  // Employee management state
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
+  const [newEmployee, setNewEmployee] = useState({
+    full_name: "",
+    email: "",
+    department: ""
+  });
+  const [editingEmployee, setEditingEmployee] = useState<any>(null);
+
+  // Guest management state
+  const [guests, setGuests] = useState<any[]>([]);
+  const [showAddGuestModal, setShowAddGuestModal] = useState(false);
+  const [newGuest, setNewGuest] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    company: "",
+    purpose: ""
+  });
+  const [editingGuest, setEditingGuest] = useState<any>(null);
+
+  // Guest check-ins state
+  const [guestCheckIns, setGuestCheckIns] = useState<any[]>([]);
+  const [loadingGuestCheckIns, setLoadingGuestCheckIns] = useState(false);
+
   const { toast } = useToast();
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
-  useEffect(() => {
-    // Check if user is admin
-    const isAdmin = localStorage.getItem("isAdmin");
-    if (!isAdmin) {
-      navigate("/admin-login");
+  // Employee Management Functions
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .order('full_name');
+
+      if (error) throw error;
+      setEmployees(data || []);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch employees",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddEmployee = async () => {
+    if (!newEmployee.full_name.trim()) {
+      toast({
+        title: "Error",
+        description: "Employee name is required",
+        variant: "destructive",
+      });
       return;
     }
 
-    fetchData();
-    fetchFiles();
-    loadSavedLogs();
-    fetchActiveCheckIns();
-  }, [navigate]);
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .insert({
+          full_name: newEmployee.full_name.trim(),
+          email: newEmployee.email.trim() || null,
+          department: newEmployee.department.trim() || null,
+          is_active: true
+        })
+        .select()
+        .single();
 
-  // Add automatic logout when leaving the page
+      if (error) throw error;
+
+      // Add user role
+      await supabase
+        .from('user_roles')
+        .insert({
+          user_id: data.id,
+          role: 'employee'
+        });
+
+      toast({
+        title: "Success",
+        description: `${data.full_name} has been added successfully`,
+      });
+
+      // Reset form and refresh
+      setNewEmployee({ full_name: "", email: "", department: "" });
+      setShowAddEmployeeModal(false);
+      fetchEmployees();
+    } catch (error) {
+      console.error('Error adding employee:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add employee",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUpdateEmployee = async () => {
+    if (!editingEmployee) return;
+
+    try {
+      const { error } = await supabase
+        .from('employees')
+        .update({
+          full_name: editingEmployee.full_name.trim(),
+          email: editingEmployee.email?.trim() || null,
+          department: editingEmployee.department?.trim() || null,
+          is_active: editingEmployee.is_active
+        })
+        .eq('id', editingEmployee.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Employee updated successfully",
+      });
+
+      setEditingEmployee(null);
+      fetchEmployees();
+    } catch (error) {
+      console.error('Error updating employee:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update employee",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteEmployee = async (employeeId: string, employeeName: string) => {
+    if (!confirm(`Are you sure you want to delete ${employeeName}? This action cannot be undone.`)) return;
+
+    try {
+      // Delete user role first
+      await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', employeeId);
+
+      // Then delete employee
+      const { error } = await supabase
+        .from('employees')
+        .delete()
+        .eq('id', employeeId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${employeeName} has been deleted`,
+      });
+
+      fetchEmployees();
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete employee",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Guest Management Functions
+  const fetchGuests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('guests')
+        .select('*')
+        .order('full_name');
+
+      if (error) throw error;
+      setGuests(data || []);
+    } catch (error) {
+      console.error('Error fetching guests:', error);
+    }
+  };
+
+  const handleAddGuest = async () => {
+    if (!newGuest.full_name.trim()) {
+      toast({
+        title: "Error",
+        description: "Guest name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('guests')
+        .insert({
+          full_name: newGuest.full_name.trim(),
+          email: newGuest.email.trim() || null,
+          phone: newGuest.phone.trim() || null,
+          company: newGuest.company.trim() || null,
+          purpose: newGuest.purpose.trim() || null,
+          is_active: true
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${data.full_name} has been added as a guest`,
+      });
+
+      setNewGuest({ full_name: "", email: "", phone: "", company: "", purpose: "" });
+      setShowAddGuestModal(false);
+      fetchGuests();
+    } catch (error) {
+      console.error('Error adding guest:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add guest",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEditGuest = async () => {
+    if (!editingGuest || !editingGuest.full_name.trim()) {
+      toast({
+        title: "Error",
+        description: "Guest name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('guests')
+        .update({
+          full_name: editingGuest.full_name.trim(),
+          email: editingGuest.email?.trim() || null,
+          phone: editingGuest.phone?.trim() || null,
+          company: editingGuest.company?.trim() || null,
+          purpose: editingGuest.purpose?.trim() || null,
+          is_active: editingGuest.is_active
+        })
+        .eq('id', editingGuest.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${editingGuest.full_name} has been updated`,
+      });
+
+      setEditingGuest(null);
+      fetchGuests();
+    } catch (error) {
+      console.error('Error updating guest:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update guest",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteGuest = async (guestId: string, guestName: string) => {
+    if (!confirm(`Are you sure you want to delete ${guestName}? This action cannot be undone.`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('guests')
+        .delete()
+        .eq('id', guestId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${guestName} has been deleted`,
+      });
+
+      fetchGuests();
+    } catch (error) {
+      console.error('Error deleting guest:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete guest",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Guest Check-in Functions
+  const fetchGuestCheckIns = async () => {
+    setLoadingGuestCheckIns(true);
+    try {
+      const { data, error } = await supabase
+        .from('guest_check_ins')
+        .select('*, guests(full_name, email, company)')
+        .is('check_out_time', null)
+        .order('check_in_time', { ascending: false });
+
+      if (error) throw error;
+      setGuestCheckIns(data || []);
+    } catch (error) {
+      console.error('Error fetching guest check-ins:', error);
+    } finally {
+      setLoadingGuestCheckIns(false);
+    }
+  };
+
+  const handleGuestCheckOut = async (checkInId: string, guestName: string) => {
+    try {
+      const { error } = await supabase
+        .from('guest_check_ins')
+        .update({ check_out_time: new Date().toISOString() })
+        .eq('id', checkInId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${guestName} has been checked out`,
+      });
+
+      fetchGuestCheckIns();
+    } catch (error) {
+      console.error('Error checking out guest:', error);
+      toast({
+        title: "Error",
+        description: "Failed to check out guest",
+        variant: "destructive",
+      });
+    }
+  };
+
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      localStorage.removeItem("isAdmin");
-    };
+    // Check if user is admin by verifying localStorage
+    const checkAdminAuth = () => {
+      const token = localStorage.getItem('adminToken');
+      const isAdmin = localStorage.getItem('isAdmin');
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        // User is leaving the tab or minimizing
-        localStorage.removeItem("isAdmin");
+      console.log('🔐 AdminDashboard auth check:', {
+        hasToken: !!token,
+        isAdmin: isAdmin,
+        token: token ? token.substring(0, 8) + '...' : null
+      });
+
+      if (!isAdmin || !token) {
+        console.log('❌ Auth failed, redirecting to login');
+        navigate('/admin-login', { replace: true });
+        return;
       }
+
+      console.log('✅ Auth passed, loading data...');
+      
+      // Token valid, fetch data
+      fetchData();
+      fetchFiles();
+      loadSavedLogs();
+      fetchActiveCheckIns();
+      fetchEmployees();
+      fetchGuests();
+      fetchGuestCheckIns();
     };
 
-    // Add event listeners
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Cleanup event listeners
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    checkAdminAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSavedLogs = async () => {
@@ -377,8 +713,8 @@ export default function AdminDashboard() {
 
   const downloadSavedLogAsExcel = (log: SavedLog) => {
     try {
-      // Parse the log data
-      const logData = typeof log.log_data === 'string' ? JSON.parse(log.log_data) : log.log_data;
+      // Parse the log data from json_content instead of log_data
+      const logData = typeof log.json_content === 'string' ? JSON.parse(log.json_content) : log.json_content;
 
       // Create Excel data
       const excelData = logData.map((record: any) => ({
@@ -392,14 +728,14 @@ export default function AdminDashboard() {
       const ws = XLSX.utils.json_to_sheet(excelData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, `${log.date} Logs`);
-      XLSX.writeFile(wb, `${log.date}_DailyLogs.xlsx`);
+      XLSX.writeFile(wb, `${new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}_DailyLogs.xlsx`);
 
       toast({
         title: "Success",
         description: "Excel file downloaded successfully",
       });
     } catch (error) {
-      console.error('Error creating Excel file:', error);
+      console.error('Error downloading Excel:', error);
       toast({
         title: "Error",
         description: "Failed to download Excel file",
@@ -529,9 +865,42 @@ export default function AdminDashboard() {
     return matchesName && matchesDateFrom && matchesDateTo && matchesStatus;
   });
 
-  const handleLogout = () => {
-    localStorage.removeItem("isAdmin");
+  const handleLogout = async () => {
+    const token = localStorage.getItem('adminToken');
+
+    // Call logout endpoint
+    try {
+      await fetch('/api/admin/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+    } catch (error) {
+      console.warn('Logout API call failed:', error);
+    }
+
+    // Clear all admin-related storage
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('isAdmin');
+
+    // Dispatch event to update navigation
+    window.dispatchEvent(new Event('adminStateChange'));
+
     navigate("/");
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out of admin panel.",
+    });
+  };
+
+  const handleBackToMain = () => {
+    navigate("/");
+    toast({
+      title: "Navigation",
+      description: "Returning to main check-in interface.",
+    });
   };
 
   const exportToExcel = () => {
@@ -584,40 +953,63 @@ export default function AdminDashboard() {
       const today = new Date();
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      const dateStr = today.toISOString().split('T')[0];
+      const monthStr = today.toISOString().slice(0, 7);
 
-      // Fetch today's records
-      const { data: todaysRecords, error } = await supabase
+      // Get today's check-ins
+      let { data: todaysRecords, error: fetchError } = await supabase
         .from('check_ins')
         .select('*')
-        .gte('check_in_time', startOfDay.toISOString())
-        .lt('check_in_time', endOfDay.toISOString())
-        .order('check_in_time', { ascending: false });
+        .gte('check_in_time', new Date(dateStr + 'T00:00:00.000Z').toISOString())
+        .lt('check_in_time', new Date(dateStr + 'T23:59:59.999Z').toISOString())
+        .order('check_in_time', { ascending: true });
 
-      if (error) throw error;
+      if (fetchError) throw fetchError;
 
       if (!todaysRecords || todaysRecords.length === 0) {
         toast({
-          title: "No Records",
-          description: "No check-in records found for today.",
+          title: "No Records to Save",
+          description: "There are no check-in records for today.",
           variant: "destructive",
         });
         return;
       }
 
-      // Check completion - verify all employees have checked out
+      // Check for incomplete records
       const incompleteRecords = todaysRecords.filter(record => !record.check_out_time);
+
       if (incompleteRecords.length > 0) {
-        toast({
-          title: "Cannot Save Logs",
-          description: `${incompleteRecords.length} employee(s) have not checked out yet. All employees must check out before saving logs.`,
-          variant: "destructive",
+        // Auto-check out incomplete records with current time
+        const autoCheckoutPromises = incompleteRecords.map(async (record) => {
+          const { error } = await supabase
+            .from('check_ins')
+            .update({ check_out_time: new Date().toISOString() })
+            .eq('id', record.id);
+
+          if (error) throw error;
+          return record;
         });
-        return;
+
+        await Promise.all(autoCheckoutPromises);
+
+        toast({
+          title: "Auto-Checkout Complete",
+          description: `${incompleteRecords.length} employee(s) were automatically checked out to save logs.`,
+        });
+
+        // Refetch records after auto-checkout
+        const { data: updatedRecords, error: refetchError } = await supabase
+          .from('check_ins')
+          .select('*')
+          .gte('check_in_time', new Date(dateStr + 'T00:00:00.000Z').toISOString())
+          .lt('check_in_time', new Date(dateStr + 'T23:59:59.999Z').toISOString())
+          .order('check_in_time', { ascending: true });
+
+        if (refetchError) throw refetchError;
+        todaysRecords = updatedRecords;
       }
 
       // Generate file name
-      const dateStr = today.toISOString().split('T')[0];
-      const monthStr = dateStr.slice(0, 7); // YYYY-MM
       const baseFileName = `${dateStr}_DailyLogs`;
 
       // Prepare data for different formats
@@ -1056,10 +1448,16 @@ Generated on: ${new Date().toLocaleString()}`,
                 Full administrative access to all check-in records
               </p>
             </div>
-            <Button variant="outline" onClick={handleLogout} className="w-full sm:w-auto">
-              <LogoutIcon className="w-4 h-4 mr-2 text-primary" />
-              Logout
-            </Button>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button variant="outline" onClick={handleBackToMain} className="flex-1 sm:flex-initial">
+                <Home className="w-4 h-4 mr-2 text-primary" />
+                Back to Main
+              </Button>
+              <Button variant="outline" onClick={handleLogout} className="flex-1 sm:flex-initial">
+                <LogoutIcon className="w-4 h-4 mr-2 text-primary" />
+                Logout
+              </Button>
+            </div>
           </div>
 
           {/* Stats Cards */}
@@ -1158,9 +1556,17 @@ Generated on: ${new Date().toLocaleString()}`,
           </Card>
 
           <Tabs defaultValue="dashboard" className="space-y-4 sm:space-y-6">
-            <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 transition-all duration-300 h-auto p-1">
+            <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 transition-all duration-300 h-auto p-1">
               <TabsTrigger value="dashboard" className="transition-all duration-200 text-xs sm:text-sm">Dashboard</TabsTrigger>
               <TabsTrigger value="records" className="transition-all duration-200 text-xs sm:text-sm">Records</TabsTrigger>
+              <TabsTrigger value="employees" className="transition-all duration-200 text-xs sm:text-sm">Employees</TabsTrigger>
+              <TabsTrigger 
+                value="guests" 
+                className="transition-all duration-200 text-xs sm:text-sm"
+                onClick={() => navigate('/guest-dashboard')}
+              >
+                Guests
+              </TabsTrigger>
               <TabsTrigger value="files" className="transition-all duration-200 text-xs sm:text-sm">Files</TabsTrigger>
               <TabsTrigger value="analytics" className="transition-all duration-200 text-xs sm:text-sm">Analytics</TabsTrigger>
             </TabsList>
@@ -1385,7 +1791,9 @@ Generated on: ${new Date().toLocaleString()}`,
                                   ...groupedLogs[month].map((log) => (
                                     <div key={log.id} className="flex items-center justify-between p-3 border rounded-[7px] hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => handleViewSavedLog(log)}>
                                       <div className="flex-1">
-                                        <div className="font-medium text-sm">{log.date} Daily Logs</div>
+                                        <div className="font-medium text-sm">
+                                          {new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })} Daily Logs
+                                        </div>
                                         <div className="text-xs text-muted-foreground">
                                           {log.total_records} records • {new Date(log.saved_at).toLocaleDateString()}
                                         </div>
@@ -1405,41 +1813,39 @@ Generated on: ${new Date().toLocaleString()}`,
                                           variant="outline"
                                           size="sm"
                                           onClick={() => {
-                                            const blob = new Blob([log.json_content], { type: 'application/json' });
+                                            const doc = new jsPDF();
+                                            const logData = typeof log.log_data === 'string' ? JSON.parse(log.log_data) : log.json_content;
+
+                                            doc.text(`${new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })} Daily Logs`, 20, 20);
+                                            doc.text(`Total Records: ${log.total_records}`, 20, 30);
+
+                                            let y = 50;
+                                            logData.forEach((record: any, index: number) => {
+                                              doc.text(`${index + 1}. ${record.userName || record.full_name}`, 20, y);
+                                              doc.text(`Check-in: ${record.checkInTime || new Date(record.check_in_time).toLocaleString()}`, 30, y + 7);
+                                              doc.text(`Check-out: ${record.checkOutTime || (record.check_out_time ? new Date(record.check_out_time).toLocaleString() : 'Not checked out')}`, 30, y + 14);
+                                              y += 25;
+                                              if (y > 270) {
+                                                doc.addPage();
+                                                y = 20;
+                                              }
+                                            });
+
+                                            const blob = new Blob([doc.output('blob')], { type: 'application/pdf' });
                                             const url = URL.createObjectURL(blob);
                                             const a = document.createElement('a');
                                             a.href = url;
-                                            a.download = `${log.date}_DailyLogs.json`;
+                                            a.download = `${new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}_DailyLogs.pdf`;
                                             document.body.appendChild(a);
                                             a.click();
                                             document.body.removeChild(a);
                                             URL.revokeObjectURL(url);
                                           }}
                                           className="text-xs"
-                                          title="Download JSON"
+                                          title="Download PDF"
                                         >
                                           <Download className="w-3 h-3 mr-1" />
-                                          JSON
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => {
-                                            const blob = new Blob([log.csv_content], { type: 'text/csv' });
-                                            const url = URL.createObjectURL(blob);
-                                            const a = document.createElement('a');
-                                            a.href = url;
-                                            a.download = `${log.date}_DailyLogs.csv`;
-                                            document.body.appendChild(a);
-                                            a.click();
-                                            document.body.removeChild(a);
-                                            URL.revokeObjectURL(url);
-                                          }}
-                                          className="text-xs"
-                                          title="Download CSV"
-                                        >
-                                          <Download className="w-3 h-3 mr-1" />
-                                          CSV
+                                          PDF
                                         </Button>
                                         <Button
                                           variant="outline"
@@ -1449,7 +1855,7 @@ Generated on: ${new Date().toLocaleString()}`,
                                             const url = URL.createObjectURL(blob);
                                             const a = document.createElement('a');
                                             a.href = url;
-                                            a.download = `${log.date}_DailyLogs_Summary.txt`;
+                                            a.download = `${new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}_DailyLogs.txt`;
                                             document.body.appendChild(a);
                                             a.click();
                                             document.body.removeChild(a);
@@ -1459,7 +1865,7 @@ Generated on: ${new Date().toLocaleString()}`,
                                           title="Download Summary"
                                         >
                                           <Download className="w-3 h-3 mr-1" />
-                                          Summary
+                                          Text
                                         </Button>
                                         <Button
                                           variant="destructive"
@@ -1688,7 +2094,7 @@ Generated on: ${new Date().toLocaleString()}`,
                               ...files.map(file => ({ ...file, type: 'file' })),
                               ...savedLogs.map(log => ({
                                 id: `log-${log.id}`,
-                                file_name: `${log.date}_DailyLogs`,
+                                file_name: `${new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}_DailyLogs`,
                                 file_type: 'application/json',
                                 file_size: new Blob([log.json_content]).size,
                                 uploaded_at: log.saved_at,
@@ -1839,6 +2245,470 @@ Generated on: ${new Date().toLocaleString()}`,
               </Collapsible>
             </TabsContent>
 
+            <TabsContent value="employees" className="space-y-6 transition-all duration-300">
+              <Card>
+                <div className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                      <h3 className="text-lg font-heading">Employee Management</h3>
+                      <p className="text-sm text-muted-foreground">Add, edit, and manage employees</p>
+                    </div>
+                    <Button
+                      onClick={() => setShowAddEmployeeModal(true)}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Employee
+                    </Button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Department</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {employees.map((employee) => (
+                          <TableRow key={employee.id}>
+                            <TableCell className="font-medium">{employee.full_name}</TableCell>
+                            <TableCell>{employee.email || '-'}</TableCell>
+                            <TableCell>{employee.department || '-'}</TableCell>
+                            <TableCell>
+                              <Badge variant={employee.is_active ? 'default' : 'secondary'}>
+                                {employee.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setEditingEmployee(employee)}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeleteEmployee(employee.id, employee.full_name)}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {employees.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                              No employees found. Add your first employee to get started.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Add Employee Modal */}
+              <Dialog open={showAddEmployeeModal} onOpenChange={setShowAddEmployeeModal}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Employee</DialogTitle>
+                    <DialogDescription>
+                      Add a new employee to the check-in system
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="fullName">Full Name *</Label>
+                      <Input
+                        id="fullName"
+                        value={newEmployee.full_name}
+                        onChange={(e) => setNewEmployee(prev => ({ ...prev, full_name: e.target.value }))}
+                        placeholder="Enter full name"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={newEmployee.email}
+                        onChange={(e) => setNewEmployee(prev => ({ ...prev, email: e.target.value }))}
+                        placeholder="Enter email (optional)"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="department">Department</Label>
+                      <Input
+                        id="department"
+                        value={newEmployee.department}
+                        onChange={(e) => setNewEmployee(prev => ({ ...prev, department: e.target.value }))}
+                        placeholder="Enter department (optional)"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setShowAddEmployeeModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleAddEmployee}>
+                      Add Employee
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Edit Employee Modal */}
+              <Dialog open={!!editingEmployee} onOpenChange={() => setEditingEmployee(null)}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Edit Employee</DialogTitle>
+                    <DialogDescription>
+                      Update employee information
+                    </DialogDescription>
+                  </DialogHeader>
+                  {editingEmployee && (
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="editFullName">Full Name *</Label>
+                        <Input
+                          id="editFullName"
+                          value={editingEmployee.full_name}
+                          onChange={(e) => setEditingEmployee(prev => ({ ...prev, full_name: e.target.value }))}
+                          placeholder="Enter full name"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="editEmail">Email</Label>
+                        <Input
+                          id="editEmail"
+                          type="email"
+                          value={editingEmployee.email || ''}
+                          onChange={(e) => setEditingEmployee(prev => ({ ...prev, email: e.target.value }))}
+                          placeholder="Enter email (optional)"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="editDepartment">Department</Label>
+                        <Input
+                          id="editDepartment"
+                          value={editingEmployee.department || ''}
+                          onChange={(e) => setEditingEmployee(prev => ({ ...prev, department: e.target.value }))}
+                          placeholder="Enter department (optional)"
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="editActive"
+                          checked={editingEmployee.is_active}
+                          onCheckedChange={(checked) => setEditingEmployee(prev => ({ ...prev, is_active: checked as boolean }))}
+                        />
+                        <Label htmlFor="editActive">Active</Label>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setEditingEmployee(null)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleUpdateEmployee}>
+                      Update Employee
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </TabsContent>
+
+            <TabsContent value="guests" className="space-y-6 transition-all duration-300">
+              {/* Currently Checked In Guests */}
+              <Card>
+                <div className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                      <h3 className="text-lg font-heading">Currently Checked In Guests</h3>
+                      <p className="text-sm text-muted-foreground">Guests currently in the premises</p>
+                    </div>
+                    <Button variant="outline" onClick={fetchGuestCheckIns} disabled={loadingGuestCheckIns}>
+                      <RefreshCw className={`h-4 w-4 mr-2 ${loadingGuestCheckIns ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  </div>
+
+                  {loadingGuestCheckIns ? (
+                    <div className="text-center py-8 text-muted-foreground">Loading...</div>
+                  ) : guestCheckIns.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No guests currently checked in
+                    </div>
+                  ) : (
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Company</TableHead>
+                            <TableHead>Check-in Time</TableHead>
+                            <TableHead>Purpose</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {guestCheckIns.map((checkIn: any) => (
+                            <TableRow key={checkIn.id}>
+                              <TableCell className="font-medium">
+                                {checkIn.guests?.full_name || 'Unknown'}
+                              </TableCell>
+                              <TableCell>{checkIn.guests?.email || '-'}</TableCell>
+                              <TableCell>{checkIn.guests?.company || '-'}</TableCell>
+                              <TableCell>
+                                {checkIn.check_in_time ? new Date(checkIn.check_in_time).toLocaleString() : '-'}
+                              </TableCell>
+                              <TableCell>{checkIn.purpose || '-'}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleGuestCheckOut(checkIn.id, checkIn.guests?.full_name)}
+                                >
+                                  <LogOut className="h-4 w-4 mr-1" />
+                                  Check Out
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              {/* Guest Management */}
+              <Card>
+                <div className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                      <h3 className="text-lg font-heading">Guest Management</h3>
+                      <p className="text-sm text-muted-foreground">Add, edit, and manage guests</p>
+                    </div>
+                    <Button onClick={() => setShowAddGuestModal(true)} className="flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      Add Guest
+                    </Button>
+                  </div>
+
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>Company</TableHead>
+                          <TableHead>Purpose</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {guests.map((guest) => (
+                          <TableRow key={guest.id}>
+                            <TableCell className="font-medium">{guest.full_name}</TableCell>
+                            <TableCell>{guest.email || '-'}</TableCell>
+                            <TableCell>{guest.phone || '-'}</TableCell>
+                            <TableCell>{guest.company || '-'}</TableCell>
+                            <TableCell>{guest.purpose || '-'}</TableCell>
+                            <TableCell>
+                              <Badge variant={guest.is_active ? "default" : "secondary"}>
+                                {guest.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setEditingGuest(guest)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteGuest(guest.id, guest.full_name)}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {guests.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                              No guests found. Add your first guest to get started.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Add Guest Modal */}
+              <Dialog open={showAddGuestModal} onOpenChange={setShowAddGuestModal}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Guest</DialogTitle>
+                    <DialogDescription>
+                      Add a new guest to the check-in system
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="guestFullName">Full Name *</Label>
+                      <Input
+                        id="guestFullName"
+                        value={newGuest.full_name}
+                        onChange={(e) => setNewGuest({ ...newGuest, full_name: e.target.value })}
+                        placeholder="Enter guest full name"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="guestEmail">Email</Label>
+                      <Input
+                        id="guestEmail"
+                        type="email"
+                        value={newGuest.email}
+                        onChange={(e) => setNewGuest({ ...newGuest, email: e.target.value })}
+                        placeholder="Enter email (optional)"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="guestPhone">Phone</Label>
+                      <Input
+                        id="guestPhone"
+                        value={newGuest.phone}
+                        onChange={(e) => setNewGuest({ ...newGuest, phone: e.target.value })}
+                        placeholder="Enter phone number (optional)"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="guestCompany">Company</Label>
+                      <Input
+                        id="guestCompany"
+                        value={newGuest.company}
+                        onChange={(e) => setNewGuest({ ...newGuest, company: e.target.value })}
+                        placeholder="Enter company (optional)"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="guestPurpose">Purpose</Label>
+                      <Input
+                        id="guestPurpose"
+                        value={newGuest.purpose}
+                        onChange={(e) => setNewGuest({ ...newGuest, purpose: e.target.value })}
+                        placeholder="Enter purpose of visit"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button variant="outline" onClick={() => setShowAddGuestModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleAddGuest}>
+                      Add Guest
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Edit Guest Modal */}
+              <Dialog open={!!editingGuest} onOpenChange={() => setEditingGuest(null)}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Edit Guest</DialogTitle>
+                    <DialogDescription>
+                      Update guest information
+                    </DialogDescription>
+                  </DialogHeader>
+                  {editingGuest && (
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="editGuestName">Full Name *</Label>
+                        <Input
+                          id="editGuestName"
+                          value={editingGuest.full_name || ''}
+                          onChange={(e) => setEditingGuest(prev => ({ ...prev, full_name: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="editGuestEmail">Email</Label>
+                        <Input
+                          id="editGuestEmail"
+                          value={editingGuest.email || ''}
+                          onChange={(e) => setEditingGuest(prev => ({ ...prev, email: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="editGuestPhone">Phone</Label>
+                        <Input
+                          id="editGuestPhone"
+                          value={editingGuest.phone || ''}
+                          onChange={(e) => setEditingGuest(prev => ({ ...prev, phone: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="editGuestCompany">Company</Label>
+                        <Input
+                          id="editGuestCompany"
+                          value={editingGuest.company || ''}
+                          onChange={(e) => setEditingGuest(prev => ({ ...prev, company: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="editGuestPurpose">Purpose</Label>
+                        <Input
+                          id="editGuestPurpose"
+                          value={editingGuest.purpose || ''}
+                          onChange={(e) => setEditingGuest(prev => ({ ...prev, purpose: e.target.value }))}
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="editGuestActive"
+                          checked={editingGuest.is_active}
+                          onCheckedChange={(checked) => setEditingGuest(prev => ({ ...prev, is_active: checked as boolean }))}
+                        />
+                        <Label htmlFor="editGuestActive">Active</Label>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setEditingGuest(null)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleEditGuest}>
+                      Update Guest
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </TabsContent>
+
             <TabsContent value="analytics" className="space-y-6 transition-all duration-300">
               <Collapsible open={!isFilesCollapsed} onOpenChange={setIsFilesCollapsed}>
                 <CollapsibleTrigger asChild>
@@ -1984,73 +2854,69 @@ Generated on: ${new Date().toLocaleString()}`,
 
       {/* File Upload Modal */}
       <Dialog open={showFileUpload} onOpenChange={setShowFileUpload}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Upload File</DialogTitle>
             <DialogDescription>Upload a file to the admin storage for management.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Select or Drag & Drop File</label>
-              <div
-                className={`border-2 border-dashed rounded-[7px] p-8 text-center transition-colors ${dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
-                  }`}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  const files = e.dataTransfer.files;
-                  if (files.length > 0) {
-                    setSelectedFile(files[0]);
+              <label className="block text-sm font-medium mb-2">Select File</label>
+              <input
+                type="file"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    setSelectedFile(e.target.files[0]);
                   }
                 }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-              >
-                {selectedFile ? (
-                  <div className="space-y-2">
-                    <File className="w-8 h-8 mx-auto text-primary" />
-                    <p className="text-sm font-medium">{selectedFile.name}</p>
+                className="w-full p-2 border rounded-md text-sm"
+              />
+            </div>
+
+            {selectedFile && (
+              <div className="p-3 bg-muted rounded-md">
+                <div className="flex items-center gap-2">
+                  <File className="w-4 h-4 text-primary" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{selectedFile.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {(selectedFile.size / 1024).toFixed(1)} KB
+                      {(selectedFile.size / 1024).toFixed(1)} KB • {selectedFile.type || 'Unknown type'}
                     </p>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                    <p className="text-sm">Drop files here or click to browse</p>
-                  </div>
-                )}
-                <Input
-                  type="file"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  accept="*/*"
-                  className="hidden"
-                  id="file-input"
-                />
-                <label htmlFor="file-input" className="cursor-pointer">
-                  <Button variant="outline" size="sm" className="mt-2" asChild>
-                    <span>Browse Files</span>
-                  </Button>
-                </label>
+                </div>
               </div>
-            </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium mb-1">Description (optional)</label>
-              <Textarea
+              <label className="block text-sm font-medium mb-1">Description (Optional)</label>
+              <Input
                 value={fileDescription}
                 onChange={(e) => setFileDescription(e.target.value)}
                 placeholder="Enter file description"
-                rows={3}
+                className="text-sm"
               />
             </div>
-            <div className="flex gap-2">
-              <Button onClick={handleFileUpload} disabled={!selectedFile}>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                onClick={handleFileUpload}
+                disabled={!selectedFile}
+                className="flex-1"
+              >
+                <Upload className="w-4 h-4 mr-2" />
                 Upload File
               </Button>
-              <Button variant="outline" onClick={() => setShowFileUpload(false)}>Cancel</Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowFileUpload(false);
+                  setSelectedFile(null);
+                  setFileDescription("");
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -2061,7 +2927,12 @@ Generated on: ${new Date().toLocaleString()}`,
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
-              <span>{selectedSavedLog?.date} Daily Logs</span>
+              <span>
+                {selectedSavedLog ?
+                  new Date(selectedSavedLog.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' }) + ' Daily Logs'
+                  : 'Daily Logs'
+                }
+              </span>
               <div className="flex gap-2">
                 <Button
                   variant="outline"

@@ -7,6 +7,12 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      }
+    }
   },
   plugins: [react()],
   resolve: {
@@ -17,13 +23,26 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          router: ['react-router-dom'],
-          ui: ['@radix-ui/react-dialog', '@radix-ui/react-tabs', '@radix-ui/react-select'],
-          utils: ['date-fns', 'clsx', 'tailwind-merge'],
-          charts: ['recharts'],
-          supabase: ['@supabase/supabase-js'],
+        // Keep React and react-dom in single chunk to prevent hook issues
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            // Group third-party libraries but keep React together
+            if (id.includes('react-dom') || id.includes('react') || id.includes('scheduler')) {
+              return 'react-vendor';
+            }
+            if (id.includes('@radix-ui')) {
+              return 'radix-ui';
+            }
+            if (id.includes('recharts')) {
+              return 'charts';
+            }
+            if (id.includes('@supabase')) {
+              return 'supabase';
+            }
+            if (id.includes('react-router')) {
+              return 'router';
+            }
+          }
         },
       },
     },
@@ -35,9 +54,12 @@ export default defineConfig(({ mode }) => ({
       'react',
       'react-dom',
       'react-router-dom',
+      'react-router',
       'date-fns',
       'clsx',
       'tailwind-merge'
     ],
+    // Force re-include React to fix hook issues
+    force: true,
   },
 }));
