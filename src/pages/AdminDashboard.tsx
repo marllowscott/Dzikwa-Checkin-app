@@ -35,9 +35,6 @@ import jsPDF from 'jspdf';
 export default function AdminDashboard() {
   const [data, setData] = useState<CheckInRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({
-    fullName: ""
-  });
   const [editingRecord, setEditingRecord] = useState<CheckInRecord | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newRecord, setNewRecord] = useState({
@@ -850,10 +847,8 @@ export default function AdminDashboard() {
     }
   };
 
-  const filteredData = data.filter(record => {
-    const matchesName = !filters.fullName || record.full_name.toLowerCase().includes(filters.fullName.toLowerCase());
-    return matchesName;
-  });
+  // Show all records by default - no filtering
+  const filteredData = data;
 
   const handleLogout = async () => {
     const token = localStorage.getItem('adminToken');
@@ -1504,22 +1499,6 @@ Generated on: ${new Date().toLocaleString()}`,
               </div>
             </Card>
           </div>
-
-          {/* Filters */}
-          <Card className="p-3 sm:p-4">
-            <div className="flex items-center gap-2 mb-3 sm:mb-4">
-              <Filter className="w-4 h-4" />
-              <span className="font-medium text-sm sm:text-base">Filters</span>
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              <Input
-                placeholder="Search by name..."
-                value={filters.fullName}
-                onChange={(e) => setFilters(prev => ({ ...prev, fullName: e.target.value }))}
-                className="text-sm sm:text-base"
-              />
-            </div>
-          </Card>
 
           <Tabs defaultValue="dashboard" className="space-y-4 sm:space-y-6">
             <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 transition-all duration-300 h-auto p-1">
