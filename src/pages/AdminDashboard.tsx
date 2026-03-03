@@ -36,10 +36,7 @@ export default function AdminDashboard() {
   const [data, setData] = useState<CheckInRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
-    fullName: "",
-    dateFrom: "",
-    dateTo: "",
-    status: "all"
+    fullName: ""
   });
   const [editingRecord, setEditingRecord] = useState<CheckInRecord | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -431,7 +428,7 @@ export default function AdminDashboard() {
       }
 
       console.log('✅ Auth passed, loading data...');
-      
+
       // Token valid, fetch data
       fetchData();
       fetchFiles();
@@ -855,14 +852,7 @@ export default function AdminDashboard() {
 
   const filteredData = data.filter(record => {
     const matchesName = !filters.fullName || record.full_name.toLowerCase().includes(filters.fullName.toLowerCase());
-    const recordDate = new Date(record.check_in_time).toLocaleDateString('en-CA'); // YYYY-MM-DD
-    const matchesDateFrom = !filters.dateFrom || recordDate >= filters.dateFrom;
-    const matchesDateTo = !filters.dateTo || recordDate <= filters.dateTo;
-    const matchesStatus = filters.status === "all" ||
-      (filters.status === "active" && !record.check_out_time) ||
-      (filters.status === "checked out" && record.check_out_time);
-
-    return matchesName && matchesDateFrom && matchesDateTo && matchesStatus;
+    return matchesName;
   });
 
   const handleLogout = async () => {
@@ -1521,35 +1511,11 @@ Generated on: ${new Date().toLocaleString()}`,
               <Filter className="w-4 h-4" />
               <span className="font-medium text-sm sm:text-base">Filters</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 gap-3">
               <Input
-                placeholder="Filter by name"
+                placeholder="Search by name..."
                 value={filters.fullName}
                 onChange={(e) => setFilters(prev => ({ ...prev, fullName: e.target.value }))}
-                className="text-sm sm:text-base"
-              />
-              <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
-                <SelectTrigger className="text-sm sm:text-base">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="checked out">Checked Out</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                type="date"
-                placeholder="From date"
-                value={filters.dateFrom}
-                onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
-                className="text-sm sm:text-base"
-              />
-              <Input
-                type="date"
-                placeholder="To date"
-                value={filters.dateTo}
-                onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
                 className="text-sm sm:text-base"
               />
             </div>
@@ -1560,8 +1526,8 @@ Generated on: ${new Date().toLocaleString()}`,
               <TabsTrigger value="dashboard" className="transition-all duration-200 text-xs sm:text-sm">Dashboard</TabsTrigger>
               <TabsTrigger value="records" className="transition-all duration-200 text-xs sm:text-sm">Records</TabsTrigger>
               <TabsTrigger value="employees" className="transition-all duration-200 text-xs sm:text-sm">Employees</TabsTrigger>
-              <TabsTrigger 
-                value="guests" 
+              <TabsTrigger
+                value="guests"
                 className="transition-all duration-200 text-xs sm:text-sm"
                 onClick={() => navigate('/guest-dashboard')}
               >
