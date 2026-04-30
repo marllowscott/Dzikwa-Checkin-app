@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS guest_check_ins (
   notes TEXT
 );
 
--- Dzikwa children table
+-- Dzikwa 66 table
 CREATE TABLE IF NOT EXISTS dzikwa_children (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   full_name TEXT NOT NULL,

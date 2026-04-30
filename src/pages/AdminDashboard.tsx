@@ -23,7 +23,7 @@ interface MonthlyData {
   days: { [day: string]: CheckInRecord[] };
 }
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Users, TrendingUp, Loader2, Download, Edit, Trash2, Plus, Filter, LogOut, FileText, Upload, Eye, File, Save, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, Home, RefreshCw } from "lucide-react";
+import { Calendar, Users, TrendingUp, Loader2, Download, Edit, Trash2, Plus, Filter, LogOut, FileText, Upload, Eye, File, Save, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, Home, RefreshCw, Video, Music } from "lucide-react";
 import { CheckInIcon } from "@/components/ui/CheckInIcon";
 import { AdminIcon } from "@/components/ui/AdminIcon";
 import { LogoutIcon } from "@/components/ui/LogoutIcon";
@@ -90,6 +90,30 @@ export default function AdminDashboard() {
   // Guest check-ins state
   const [guestCheckIns, setGuestCheckIns] = useState<any[]>([]);
   const [loadingGuestCheckIns, setLoadingGuestCheckIns] = useState(false);
+
+  // Child check-ins state
+  const [childCheckIns, setChildCheckIns] = useState<any[]>([]);
+  const [loadingChildCheckIns, setLoadingChildCheckIns] = useState(false);
+
+  // Dashboard data state
+  const [stats, setStats] = useState({
+    totalRecords: 0,
+    activeCheckIns: 0,
+    completedSessions: 0,
+    uniqueUsers: 0
+  });
+  const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
+  const [selectedMonthData, setSelectedMonthData] = useState<MonthlyData | null>(null);
+  const [selectedDayRecords, setSelectedDayRecords] = useState<CheckInRecord[]>([]);
+  const [dashboardAnalyticsData, setDashboardAnalyticsData] = useState({
+    checkInsByDay: []
+  });
+  const [analyticsData, setAnalyticsData] = useState({
+    checkInsByDay: [],
+    checkInsByHour: [],
+    fileUploadsByMonth: []
+  });
+  const [filteredData, setFilteredData] = useState<CheckInRecord[]>([]);
 
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -406,6 +430,632 @@ export default function AdminDashboard() {
     }
   };
 
+  // Child Check-in Functions
+  const fetchChildCheckIns = async () => {
+    setLoadingChildCheckIns(true);
+    try {
+      const { data, error } = await supabase
+        .from('child_check_ins')
+        .select('*, dzikwa_children(full_name, parent_name, grade)')
+        .is('check_out_time', null)
+        .order('check_in_time', { ascending: false });
+
+      if (error) throw error;
+      setChildCheckIns(data || []);
+    } catch (error) {
+      console.error('Error fetching child check-ins:', error);
+    } finally {
+      setLoadingChildCheckIns(false);
+    }
+  };
+
+  // Main data fetching functions
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('check_ins')
+        .select('*')
+        .order('check_in_time', { ascending: false });
+
+      if (error) throw error;
+      setData(data || []);
+      setFilteredData(data || []);
+    } catch (error) {
+      console.error('Error fetching check-in records:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch check-in records",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchFiles = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('files')
+        .select('*')
+        .order('uploaded_at', { ascending: false });
+
+      if (error) throw error;
+      setFiles(data || []);
+    } catch (error) {
+      console.error('Error fetching files:', error);
+    }
+  };
+
+  const loadSavedLogs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('saved_logs')
+        .select('*')
+        .order('saved_at', { ascending: false });
+
+      if (error) throw error;
+      setSavedLogs(data || []);
+    } catch (error) {
+      console.error('Error loading saved logs:', error);
+    }
+  };
+
+  const fetchActiveCheckIns = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('check_ins')
+        .select('*')
+        .is('check_out_time', null)
+        .order('check_in_time', { ascending: false });
+
+      if (error) throw error;
+      setActiveCheckIns(data || []);
+    } catch (error) {
+      console.error('Error fetching active check-ins:', error);
+    }
+  };
+
+  const handleChildCheckOut = async (checkInId: string, childName: string) => {
+    try {
+      const { error } = await supabase
+        .from('child_check_ins')
+        .update({ check_out_time: new Date().toISOString() })
+        .eq('id', checkInId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${childName} has been checked out`,
+      });
+
+      fetchChildCheckIns();
+    } catch (error) {
+      console.error('Error checking out child:', error);
+      toast({
+        title: "Error",
+        description: "Failed to check out child",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Navigation and utility functions
+  const handleBackToMain = () => {
+    navigate('/');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('isAdmin');
+    navigate('/admin-login');
+  };
+
+  const handleIndividualCheckout = async (checkInId: string) => {
+    try {
+      const record = activeCheckIns.find(checkIn => checkIn.id === checkInId);
+      if (!record) return;
+
+      const { error } = await supabase
+        .from('check_ins')
+        .update({ check_out_time: new Date().toISOString() })
+        .eq('id', checkInId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${record.full_name} has been checked out`,
+      });
+
+      fetchActiveCheckIns();
+      fetchData();
+    } catch (error) {
+      console.error('Error checking out:', error);
+      toast({
+        title: "Error",
+        description: "Failed to check out",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleViewSavedLog = (log: SavedLog) => {
+    setSelectedSavedLog(log);
+    setShowSavedLogModal(true);
+  };
+
+  // Export functions
+  const downloadSavedLogAsExcel = (log: SavedLog) => {
+    try {
+      const logData = typeof log.log_data === 'string' ? JSON.parse(log.log_data) : log.log_data;
+      const ws = XLSX.utils.json_to_sheet(logData.map((record: any) => ({
+        'Full Name': record.userName || record.full_name,
+        'Check In Time': record.checkInTime || record.check_in_time,
+        'Check Out Time': record.checkOutTime || record.check_out_time || 'Not checked out'
+      })));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "DailyLogs");
+      XLSX.writeFile(wb, `${new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}_DailyLogs.xlsx`);
+    } catch (error) {
+      console.error('Error downloading Excel:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download Excel file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const exportToExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(filteredData.map(record => ({
+      'Full Name': record.full_name,
+      'Check In Time': new Date(record.check_in_time).toLocaleString(),
+      'Check Out Time': record.check_out_time ? new Date(record.check_out_time).toLocaleString() : 'Not checked out'
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "CheckIns");
+    XLSX.writeFile(wb, `checkins_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const exportToCSV = () => {
+    const csv = Papa.unparse(filteredData.map(record => ({
+      'Full Name': record.full_name,
+      'Check In Time': new Date(record.check_in_time).toLocaleString(),
+      'Check Out Time': record.check_out_time ? new Date(record.check_out_time).toLocaleString() : 'Not checked out'
+    })));
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `checkins_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    doc.text('Check-In Records', 20, 20);
+    doc.text(`Total Records: ${filteredData.length}`, 20, 30);
+
+    let y = 50;
+    filteredData.forEach((record, index) => {
+      doc.text(`${index + 1}. ${record.full_name}`, 20, y);
+      doc.text(`Check-in: ${new Date(record.check_in_time).toLocaleString()}`, 30, y + 7);
+      doc.text(`Check-out: ${record.check_out_time ? new Date(record.check_out_time).toLocaleString() : 'Not checked out'}`, 30, y + 14);
+      y += 25;
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+    });
+
+    doc.save(`checkins_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  // Record CRUD operations
+  const handleAdd = async () => {
+    if (!newRecord.full_name.trim() || !newRecord.check_in_time) {
+      toast({
+        title: "Error",
+        description: "Full name and check-in time are required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('check_ins')
+        .insert({
+          full_name: newRecord.full_name.trim(),
+          check_in_time: new Date(newRecord.check_in_time).toISOString(),
+          check_out_time: newRecord.check_out_time ? new Date(newRecord.check_out_time).toISOString() : null
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Record added successfully",
+      });
+
+      setNewRecord({ full_name: "", check_in_time: "", check_out_time: "" });
+      setShowAddModal(false);
+      fetchData();
+    } catch (error) {
+      console.error('Error adding record:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add record",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEdit = async (record: CheckInRecord) => {
+    try {
+      const { error } = await supabase
+        .from('check_ins')
+        .update({
+          full_name: record.full_name,
+          check_in_time: record.check_in_time,
+          check_out_time: record.check_out_time
+        })
+        .eq('id', record.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Record updated successfully",
+      });
+
+      setEditingRecord(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error updating record:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update record",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDelete = async (recordId: string) => {
+    if (!confirm('Are you sure you want to delete this record? This action cannot be undone.')) return;
+
+    try {
+      const { error } = await supabase
+        .from('check_ins')
+        .delete()
+        .eq('id', recordId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Record deleted successfully",
+      });
+
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting record:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete record",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Bulk operations
+  const handleBulkDelete = async () => {
+    if (selectedRecords.length === 0) return;
+
+    if (!confirm(`Are you sure you want to delete ${selectedRecords.length} records? This action cannot be undone.`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('check_ins')
+        .delete()
+        .in('id', selectedRecords);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${selectedRecords.length} records deleted successfully`,
+      });
+
+      setSelectedRecords([]);
+      fetchData();
+    } catch (error) {
+      console.error('Error bulk deleting records:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete records",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleBulkExport = () => {
+    const selectedData = data.filter(record => selectedRecords.includes(record.id));
+    const ws = XLSX.utils.json_to_sheet(selectedData.map(record => ({
+      'Full Name': record.full_name,
+      'Check In Time': new Date(record.check_in_time).toLocaleString(),
+      'Check Out Time': record.check_out_time ? new Date(record.check_out_time).toLocaleString() : 'Not checked out'
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "SelectedCheckIns");
+    XLSX.writeFile(wb, `selected_checkins_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedRecords(filteredData.map(record => record.id));
+    } else {
+      setSelectedRecords([]);
+    }
+  };
+
+  // Saved logs operations
+  const handleDeleteSavedLog = async (logId: string) => {
+    if (!confirm('Are you sure you want to delete this saved log? This action cannot be undone.')) return;
+
+    try {
+      const { error } = await supabase
+        .from('saved_logs')
+        .delete()
+        .eq('id', logId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Saved log deleted successfully",
+      });
+
+      loadSavedLogs();
+    } catch (error) {
+      console.error('Error deleting saved log:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete saved log",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRestoreSavedLog = async (log: SavedLog) => {
+    try {
+      const logData = typeof log.log_data === 'string' ? JSON.parse(log.log_data) : log.log_data;
+
+      const records = logData.map((record: any) => ({
+        full_name: record.userName || record.full_name,
+        check_in_time: record.checkInTime || record.check_in_time,
+        check_out_time: record.checkOutTime || record.check_out_time || null
+      }));
+
+      const { error } = await supabase
+        .from('check_ins')
+        .insert(records);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${records.length} records restored successfully`,
+      });
+
+      fetchData();
+    } catch (error) {
+      console.error('Error restoring saved log:', error);
+      toast({
+        title: "Error",
+        description: "Failed to restore saved log",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Save today's logs
+  const saveTodaysLogs = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const todaysRecords = data.filter(record =>
+        new Date(record.check_in_time).toISOString().split('T')[0] === today
+      );
+
+      if (todaysRecords.length === 0) {
+        toast({
+          title: "No Records",
+          description: "No records found for today",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const summary = `Total records: ${todaysRecords.length}\nChecked in: ${todaysRecords.filter(r => !r.check_out_time).length}\nChecked out: ${todaysRecords.filter(r => r.check_out_time).length}`;
+
+      const { error } = await supabase
+        .from('saved_logs')
+        .insert({
+          date: today,
+          total_records: todaysRecords.length,
+          log_data: todaysRecords,
+          json_content: JSON.stringify(todaysRecords, null, 2),
+          csv_content: Papa.unparse(todaysRecords),
+          summary_content: summary
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `Today's ${todaysRecords.length} records saved successfully`,
+      });
+
+      loadSavedLogs();
+    } catch (error) {
+      console.error('Error saving logs:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save today's logs",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // File operations
+  const downloadFile = async (filePath: string, fileName: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('files')
+        .download(filePath);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFileDelete = async (fileId: string, filePath: string) => {
+    if (!confirm('Are you sure you want to delete this file? This action cannot be undone.')) return;
+
+    try {
+      // Delete from storage
+      const { error: storageError } = await supabase.storage
+        .from('files')
+        .remove([filePath]);
+
+      if (storageError) throw storageError;
+
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('files')
+        .delete()
+        .eq('id', fileId);
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: "Success",
+        description: "File deleted successfully",
+      });
+
+      fetchFiles();
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedFile) return;
+
+    try {
+      const fileExt = selectedFile.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `admin/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('files')
+        .upload(filePath, selectedFile);
+
+      if (uploadError) throw uploadError;
+
+      const { error: dbError } = await supabase
+        .from('files')
+        .insert({
+          file_name: selectedFile.name,
+          file_path: filePath,
+          file_type: selectedFile.type,
+          file_size: selectedFile.size,
+          description: fileDescription || null
+        });
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: "Success",
+        description: "File uploaded successfully",
+      });
+
+      setSelectedFile(null);
+      setFileDescription("");
+      setShowFileUpload(false);
+      fetchFiles();
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast({
+        title: "Error",
+        description: "Failed to upload file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Utility functions
+  const getStatusBadge = (record: CheckInRecord) => {
+    if (record.check_out_time) {
+      return <Badge variant="default">Checked Out</Badge>;
+    }
+    return <Badge variant="secondary">Active</Badge>;
+  };
+
+  const getFilePreview = (file: FileRecord) => {
+    const type = file.file_type?.split('/')[0];
+    switch (type) {
+      case 'image':
+        return <img src={supabase.storage.from('files').getPublicUrl(file.file_path).data.publicUrl} alt={file.file_name} className="w-8 h-8 object-cover rounded" />;
+      case 'video':
+        return <Video className="w-8 h-8 text-blue-500" />;
+      case 'audio':
+        return <Music className="w-8 h-8 text-green-500" />;
+      default:
+        return <FileText className="w-8 h-8 text-gray-500" />;
+    }
+  };
+
+  const getFileTypeBadge = (fileType: string) => {
+    const type = fileType?.split('/')[0];
+    const colorMap: Record<string, string> = {
+      'image': 'bg-blue-100 text-blue-800',
+      'video': 'bg-purple-100 text-purple-800',
+      'audio': 'bg-green-100 text-green-800',
+      'application': 'bg-gray-100 text-gray-800',
+      'text': 'bg-yellow-100 text-yellow-800'
+    };
+
+    return (
+      <Badge className={colorMap[type] || 'bg-gray-100 text-gray-800'}>
+        {type || 'Unknown'}
+      </Badge>
+    );
+  };
+
   useEffect(() => {
     // Check if user is admin by verifying localStorage
     const checkAdminAuth = () => {
@@ -434,990 +1084,86 @@ export default function AdminDashboard() {
       fetchEmployees();
       fetchGuests();
       fetchGuestCheckIns();
+      fetchChildCheckIns();
     };
 
     checkAdminAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadSavedLogs = async () => {
-    try {
-      console.log('🔍 Attempting to load saved logs from database...');
+  // Calculate stats when data changes
+  useEffect(() => {
+    const totalRecords = data.length;
+    const activeCheckIns = data.filter(record => record && !record.check_out_time).length;
+    const completedSessions = data.filter(record => record && record.check_out_time).length;
+    const uniqueUsers = new Set(data.filter(record => record && record.full_name).map(record => record.full_name)).size;
 
-      const { data: logs, error } = await supabase
-        .from('saved_logs')
-        .select('*')
-        .order('saved_at', { ascending: false });
-
-      if (error) {
-        console.error('❌ Supabase error details:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
-        });
-
-        // Check if it's a table not found error
-        if (error.code === 'PGRST116' || error.message.includes('relation') || error.message.includes('does not exist')) {
-          toast({
-            title: "Database Setup Required",
-            description: "The saved_logs table doesn't exist. Please run the SQL schema in your Supabase dashboard.",
-            variant: "destructive",
-          });
-        } else {
-          throw error;
-        }
-      } else {
-        console.log('✅ Successfully loaded saved logs:', logs?.length || 0, 'records');
-        setSavedLogs(logs || []);
-      }
-    } catch (error: any) {
-      console.error('💥 Unexpected error loading saved logs:', error);
-      toast({
-        title: "Error",
-        description: `Failed to load saved logs: ${error.message || 'Unknown error'}`,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const saveLogsToStorage = async (logs: any[]) => {
-    try {
-      for (const log of logs) {
-        const { error } = await supabase
-          .from('saved_logs')
-          .insert([{
-            date: log.date,
-            month: log.month,
-            total_records: log.totalRecords,
-            log_data: log.data,
-            json_content: log.jsonContent,
-            csv_content: log.csvContent,
-            summary_content: log.summaryContent,
-            saved_by: 'admin'
-          }]);
-
-        if (error) throw error;
-      }
-
-      // Reload saved logs
-      await loadSavedLogs();
-
-      toast({
-        title: "Success",
-        description: "Logs saved to database successfully",
-      });
-    } catch (error) {
-      console.error('Error saving logs to database:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save logs to database",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const { data: records, error } = await supabase
-        .from('check_ins')
-        .select('*')
-        .order('check_in_time', { ascending: false });
-
-      if (error) throw error;
-      setData(records || []);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchFiles = async () => {
-    try {
-      const { data: fileRecords, error } = await supabase
-        .from('files')
-        .select('*')
-        .order('uploaded_at', { ascending: false });
-
-      if (error) throw error;
-      setFiles(fileRecords || []);
-    } catch (error) {
-      console.error('Error fetching files:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load files",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const fetchActiveCheckIns = async () => {
-    try {
-      // Get today's date range
-      const today = new Date();
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-
-      const { data: activeRecords, error } = await supabase
-        .from('check_ins')
-        .select('*')
-        .gte('check_in_time', startOfDay.toISOString())
-        .lt('check_in_time', endOfDay.toISOString())
-        .is('check_out_time', null) // Only records that haven't checked out
-        .order('check_in_time', { ascending: false });
-
-      if (error) throw error;
-      setActiveCheckIns(activeRecords || []);
-    } catch (error) {
-      console.error('Error fetching active check-ins:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load active check-ins",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleIndividualCheckout = async (checkInId: string) => {
-    try {
-      const { error } = await supabase
-        .from('check_ins')
-        .update({
-          check_out_time: new Date().toISOString(),
-          checked_out: true
-        })
-        .eq('id', checkInId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Employee checked out successfully",
-      });
-
-      // Refresh data
-      fetchData();
-      fetchActiveCheckIns();
-    } catch (error) {
-      console.error('Error checking out employee:', error);
-      toast({
-        title: "Error",
-        description: "Failed to check out employee",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleViewSavedLog = (log: SavedLog) => {
-    setSelectedSavedLog(log);
-    setShowSavedLogModal(true);
-  };
-
-  const handleDeleteSavedLog = async (logId: string) => {
-    if (!confirm('Are you sure you want to delete this saved log? This action cannot be undone.')) return;
-
-    try {
-      const { error } = await supabase
-        .from('saved_logs')
-        .delete()
-        .eq('id', logId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Saved log deleted successfully",
-      });
-
-      // Refresh saved logs
-      loadSavedLogs();
-    } catch (error) {
-      console.error('Error deleting saved log:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete saved log",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleRestoreSavedLog = async (log: SavedLog) => {
-    if (!confirm(`Are you sure you want to restore ${log.total_records} records from ${log.date} back to active check-ins? This will add them back to the main records table.`)) return;
-
-    try {
-      // Parse the log data
-      const logData = typeof log.log_data === 'string' ? JSON.parse(log.log_data) : log.log_data;
-
-      // Convert log data back to check_ins format
-      const recordsToRestore = logData.map((record: any) => {
-        // Parse the check-in and check-out times back to ISO format
-        const checkInTime = new Date(record.checkInTime);
-        const checkOutTime = record.checkOutTime && record.checkOutTime !== "Not checked out"
-          ? new Date(record.checkOutTime)
-          : null;
-
-        return {
-          full_name: record.userName,
-          check_in_time: checkInTime.toISOString(),
-          check_out_time: checkOutTime ? checkOutTime.toISOString() : null,
-          created_at: new Date().toISOString()
-        };
-      });
-
-      // Insert records back into check_ins table
-      const { error: insertError } = await supabase
-        .from('check_ins')
-        .insert(recordsToRestore);
-
-      if (insertError) throw insertError;
-
-      // Delete the saved log after successful restore
-      const { error: deleteError } = await supabase
-        .from('saved_logs')
-        .delete()
-        .eq('id', log.id);
-
-      if (deleteError) throw deleteError;
-
-      toast({
-        title: "Success",
-        description: `${recordsToRestore.length} records restored to active check-ins successfully`,
-      });
-
-      // Refresh all data
-      fetchData();
-      loadSavedLogs();
-      fetchActiveCheckIns();
-    } catch (error) {
-      console.error('Error restoring saved log:', error);
-      toast({
-        title: "Error",
-        description: "Failed to restore saved log. Please check the data format.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const downloadSavedLogAsExcel = (log: SavedLog) => {
-    try {
-      // Parse the log data from json_content instead of log_data
-      const logData = typeof log.json_content === 'string' ? JSON.parse(log.json_content) : log.json_content;
-
-      // Create Excel data
-      const excelData = logData.map((record: any) => ({
-        'Full Name': record.userName || record.full_name,
-        'Check-in Time': record.checkInTime || new Date(record.check_in_time).toLocaleString(),
-        'Check-out Time': record.checkOutTime || (record.check_out_time ? new Date(record.check_out_time).toLocaleString() : 'Not checked out'),
-        'Status': record.status || (record.check_out_time ? 'Checked Out' : 'Active'),
-        'Duration': record.duration || ''
-      }));
-
-      const ws = XLSX.utils.json_to_sheet(excelData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, `${log.date} Logs`);
-      XLSX.writeFile(wb, `${new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}_DailyLogs.xlsx`);
-
-      toast({
-        title: "Success",
-        description: "Excel file downloaded successfully",
-      });
-    } catch (error) {
-      console.error('Error downloading Excel:', error);
-      toast({
-        title: "Error",
-        description: "Failed to download Excel file",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleFileUpload = async () => {
-    if (!selectedFile) return;
-
-    try {
-      // Upload file to Supabase Storage
-      const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `admin-files/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('files')
-        .upload(filePath, selectedFile);
-
-      if (uploadError) throw uploadError;
-
-      // Save file metadata to database
-      const { error: dbError } = await supabase
-        .from('files')
-        .insert([{
-          file_name: selectedFile.name,
-          file_path: filePath,
-          file_size: selectedFile.size,
-          file_type: selectedFile.type,
-          uploaded_by: "admin",
-          description: fileDescription
-        }]);
-
-      if (dbError) throw dbError;
-
-      toast({
-        title: "Success",
-        description: "File uploaded successfully",
-      });
-
-      fetchFiles();
-      setShowFileUpload(false);
-      setSelectedFile(null);
-      setFileDescription("");
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      toast({
-        title: "Error",
-        description: "Failed to upload file",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleFileDelete = async (id: string, filePath: string) => {
-    if (!confirm('Are you sure you want to delete this file?')) return;
-
-    try {
-      // Delete from storage
-      const { error: storageError } = await supabase.storage
-        .from('files')
-        .remove([filePath]);
-
-      if (storageError) throw storageError;
-
-      // Delete from database
-      const { error: dbError } = await supabase
-        .from('files')
-        .delete()
-        .eq('id', id);
-
-      if (dbError) throw dbError;
-
-      toast({
-        title: "Success",
-        description: "File deleted successfully",
-      });
-
-      fetchFiles();
-    } catch (error) {
-      console.error('Error deleting file:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete file",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const downloadFile = async (filePath: string, fileName: string) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('files')
-        .download(filePath);
-
-      if (error) throw error;
-
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error downloading file:', error);
-      toast({
-        title: "Error",
-        description: "Failed to download file",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Show all records by default - no filtering
-  const filteredData = data;
-
-  const handleLogout = async () => {
-    const token = localStorage.getItem('adminToken');
-
-    // Call logout endpoint
-    try {
-      await fetch('/api/admin/logout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-    } catch (error) {
-      console.warn('Logout API call failed:', error);
-    }
-
-    // Clear all admin-related storage
-    localStorage.removeItem('adminToken');
-    localStorage.removeItem('isAdmin');
-
-    // Dispatch event to update navigation
-    window.dispatchEvent(new Event('adminStateChange'));
-
-    navigate("/");
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out of admin panel.",
+    setStats({
+      totalRecords: totalRecords || 0,
+      activeCheckIns: activeCheckIns || 0,
+      completedSessions: completedSessions || 0,
+      uniqueUsers: uniqueUsers || 0
     });
-  };
+  }, [data]);
 
-  const handleBackToMain = () => {
-    navigate("/");
-    toast({
-      title: "Navigation",
-      description: "Returning to main check-in interface.",
-    });
-  };
+  // Update filtered data when data changes
+  useEffect(() => {
+    setFilteredData(data);
+  }, [data]);
 
-  const exportToExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredData.map(record => ({
-      'User Name': record.full_name,
-      'Check-in Time': new Date(record.check_in_time).toLocaleString(),
-      'Check-out Time': record.check_out_time ? new Date(record.check_out_time).toLocaleString() : 'Not checked out',
-      'Status': record.check_out_time ? 'Checked Out' : 'Active'
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "All CheckIns");
-    XLSX.writeFile(wb, `all-checkins-${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
+  // Calculate monthly data
+  useEffect(() => {
+    const monthlyMap: Record<string, MonthlyData> = {};
 
-  const exportToCSV = () => {
-    const csv = Papa.unparse(filteredData.map(record => ({
-      'User Name': record.full_name,
-      'Check-in Time': new Date(record.check_in_time).toLocaleString(),
-      'Check-out Time': record.check_out_time ? new Date(record.check_out_time).toLocaleString() : 'Not checked out',
-      'Status': record.check_out_time ? 'Checked Out' : 'Active'
-    })));
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `all-checkins-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
-
-  const exportToPDF = () => {
-    const doc = new jsPDF();
-    doc.text(`All Check-Ins - ${new Date().toLocaleDateString()}`, 20, 20);
-
-    let y = 40;
-    filteredData.forEach((record, index) => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-      const status = record.check_out_time ? 'Checked Out' : 'Active';
-      doc.text(`${index + 1}. ${record.full_name} - Check-in: ${new Date(record.check_in_time).toLocaleString()} - Status: ${status}`, 20, y);
-      y += 10;
-    });
-
-    doc.save(`all-checkins-${new Date().toISOString().split('T')[0]}.pdf`);
-  };
-
-  const saveTodaysLogs = async () => {
-    try {
-      // Get today's date range
-      const today = new Date();
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-      const dateStr = today.toISOString().split('T')[0];
-      const monthStr = today.toISOString().slice(0, 7);
-
-      // Get today's check-ins
-      let { data: todaysRecords, error: fetchError } = await supabase
-        .from('check_ins')
-        .select('*')
-        .gte('check_in_time', new Date(dateStr + 'T00:00:00.000Z').toISOString())
-        .lt('check_in_time', new Date(dateStr + 'T23:59:59.999Z').toISOString())
-        .order('check_in_time', { ascending: true });
-
-      if (fetchError) throw fetchError;
-
-      if (!todaysRecords || todaysRecords.length === 0) {
-        toast({
-          title: "No Records to Save",
-          description: "There are no check-in records for today.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Check for incomplete records
-      const incompleteRecords = todaysRecords.filter(record => !record.check_out_time);
-
-      if (incompleteRecords.length > 0) {
-        // Auto-check out incomplete records with current time
-        const autoCheckoutPromises = incompleteRecords.map(async (record) => {
-          const { error } = await supabase
-            .from('check_ins')
-            .update({ check_out_time: new Date().toISOString() })
-            .eq('id', record.id);
-
-          if (error) throw error;
-          return record;
-        });
-
-        await Promise.all(autoCheckoutPromises);
-
-        toast({
-          title: "Auto-Checkout Complete",
-          description: `${incompleteRecords.length} employee(s) were automatically checked out to save logs.`,
-        });
-
-        // Refetch records after auto-checkout
-        const { data: updatedRecords, error: refetchError } = await supabase
-          .from('check_ins')
-          .select('*')
-          .gte('check_in_time', new Date(dateStr + 'T00:00:00.000Z').toISOString())
-          .lt('check_in_time', new Date(dateStr + 'T23:59:59.999Z').toISOString())
-          .order('check_in_time', { ascending: true });
-
-        if (refetchError) throw refetchError;
-        todaysRecords = updatedRecords;
-      }
-
-      // Generate file name
-      const baseFileName = `${dateStr}_DailyLogs`;
-
-      // Prepare data for different formats
-      const logData = todaysRecords.map(record => ({
-        userName: record.full_name,
-        checkInTime: new Date(record.check_in_time).toLocaleString(),
-        checkOutTime: record.check_out_time ? new Date(record.check_out_time).toLocaleString() : "Not checked out",
-        status: record.check_out_time ? "Checked Out" : "Active",
-        duration: record.check_out_time ?
-          Math.round((new Date(record.check_out_time).getTime() - new Date(record.check_in_time).getTime()) / (1000 * 60)) + " minutes"
-          : "Ongoing"
-      }));
-
-      // Store logs in localStorage for dashboard display
-      const savedLogEntry = {
-        id: Date.now(),
-        date: dateStr,
-        month: monthStr,
-        totalRecords: todaysRecords.length,
-        data: logData,
-        jsonContent: JSON.stringify(logData, null, 2),
-        csvContent: [
-          ["User Name", "Check-in Time", "Check-out Time", "Status", "Duration"],
-          ...logData.map(record => [
-            record.userName,
-            record.checkInTime,
-            record.checkOutTime,
-            record.status,
-            record.duration
-          ])
-        ].map(row => row.join(",")).join("\n"),
-        summaryContent: `Daily Check-In Logs - ${dateStr}
-
-Total Records: ${todaysRecords.length}
-All employees have successfully checked out.
-
-${logData.map((record, index) =>
-          `${index + 1}. ${record.userName}
-     Check-in: ${record.checkInTime}
-     Check-out: ${record.checkOutTime}
-     Status: ${record.status}
-     Duration: ${record.duration}
-
-`).join('')}
-Generated on: ${new Date().toLocaleString()}`,
-        savedAt: new Date().toISOString()
-      };
-
-      saveLogsToStorage([savedLogEntry]);
-
-      // Clear today's records from database to prepare for next day
-      const { error: deleteError } = await supabase
-        .from('check_ins')
-        .delete()
-        .gte('check_in_time', startOfDay.toISOString())
-        .lt('check_in_time', endOfDay.toISOString());
-
-      if (deleteError) {
-        console.error('Error clearing records:', deleteError);
-        toast({
-          title: "Warning",
-          description: "Logs saved but failed to clear today's records from database.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Success",
-          description: `Today's logs saved successfully and stored in ${monthStr} container. Active logs cleared for tomorrow.`,
-        });
-        // Refresh data to show empty state
-        fetchData();
-        fetchActiveCheckIns();
-      }
-
-    } catch (error) {
-      console.error('Error saving logs:', error);
-      toast({
-        title: "Error",
-        description: "Failed to generate today's logs.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleEdit = async (record: CheckInRecord) => {
-    console.log('handleEdit called with record:', record);
-    try {
-      const updateData: any = {
-        full_name: record.full_name,
-        check_in_time: record.check_in_time
-      };
-
-      // Only include check_out_time if it's not empty
-      if (record.check_out_time && record.check_out_time.trim() !== '') {
-        updateData.check_out_time = record.check_out_time;
-      } else {
-        updateData.check_out_time = null;
-      }
-
-      console.log('Updating record with data:', updateData);
-      const { error } = await supabase
-        .from('check_ins')
-        .update(updateData)
-        .eq('id', record.id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Record updated successfully",
-      });
-
-      fetchData();
-      setEditingRecord(null);
-    } catch (error) {
-      console.error('Error updating record:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update record",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this record? This action cannot be undone.')) return;
-
-    try {
-      const { error } = await supabase
-        .from('check_ins')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Record deleted successfully",
-      });
-
-      fetchData();
-    } catch (error) {
-      console.error('Error deleting record:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete record",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleAdd = async () => {
-    try {
-      const { error } = await supabase
-        .from('check_ins')
-        .insert([{
-          full_name: newRecord.full_name,
-          check_in_time: newRecord.check_in_time,
-          check_out_time: newRecord.check_out_time || null
-        }]);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Record added successfully",
-      });
-
-      fetchData();
-      setShowAddModal(false);
-      setNewRecord({
-        full_name: "",
-        check_in_time: "",
-        check_out_time: ""
-      });
-    } catch (error) {
-      console.error('Error adding record:', error);
-      toast({
-        title: "Error",
-        description: "Failed to add record",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const stats = {
-    totalRecords: data.length,
-    activeCheckIns: data.filter(record => !record.check_out_time && !record.checked_out).length,
-    completedSessions: data.filter(record => record.check_out_time || record.checked_out).length,
-    uniqueUsers: new Set(data.map(record => record.full_name)).size
-  };
-
-  const handleSelectAll = () => {
-    if (selectedRecords.length === filteredData.length) {
-      setSelectedRecords([]);
-    } else {
-      setSelectedRecords(filteredData.map(record => record.id));
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedRecords.length === 0) return;
-    if (!confirm(`Are you sure you want to delete ${selectedRecords.length} records? This action cannot be undone.`)) return;
-
-    try {
-      const { error } = await supabase
-        .from('check_ins')
-        .delete()
-        .in('id', selectedRecords);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: `${selectedRecords.length} records deleted successfully`,
-      });
-
-      fetchData();
-      setSelectedRecords([]);
-    } catch (error) {
-      console.error('Error bulk deleting records:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete records",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleBulkExport = () => {
-    const selectedData = filteredData.filter(record => selectedRecords.includes(record.id));
-    if (selectedData.length === 0) return;
-
-    const ws = XLSX.utils.json_to_sheet(selectedData.map(record => ({
-      'User Name': record.full_name,
-      'Check-in Time': new Date(record.check_in_time).toLocaleString(),
-      'Check-out Time': record.check_out_time ? new Date(record.check_out_time).toLocaleString() : 'Not checked out',
-      'Status': record.check_out_time ? 'Checked Out' : 'Active'
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Selected CheckIns");
-    XLSX.writeFile(wb, `selected-checkins-${new Date().toISOString().split('T')[0]}.xlsx`);
-
-    toast({
-      title: "Success",
-      description: `${selectedData.length} records exported successfully`,
-    });
-  };
-
-  const getStatusBadge = (record: CheckInRecord) => {
-    if (!record.check_out_time) {
-      return <Badge className="bg-success/10 text-success border-primary hover:bg-success/20 transition-colors">Active</Badge>;
-    } else {
-      return <Badge className="bg-primary/10 text-primary border-primary hover:bg-primary/20 transition-colors">Checked Out</Badge>;
-    }
-  };
-
-  const getFileTypeBadge = (fileType: string) => {
-    const type = fileType?.split('/')[0] || 'unknown';
-    const colors = {
-      'image': 'bg-blue-500/10 text-blue-500 border-primary',
-      'application': 'bg-purple-500/10 text-purple-500 border-primary',
-      'text': 'bg-green-500/10 text-green-500 border-primary',
-      'video': 'bg-red-500/10 text-red-500 border-primary',
-      'audio': 'bg-yellow-500/10 text-yellow-500 border-primary',
-      'unknown': 'bg-gray-500/10 text-gray-500 border-primary'
-    };
-    return <Badge className={`${colors[type as keyof typeof colors] || colors.unknown} hover:opacity-80 transition-opacity`}>{type}</Badge>;
-  };
-
-  const getFilePreview = (file: FileRecord) => {
-    if (file.file_type?.startsWith('image/')) {
-      const { data } = supabase.storage.from('files').getPublicUrl(file.file_path);
-      return <img src={data.publicUrl} alt={file.file_name} className="w-8 h-8 object-cover rounded" />;
-    } else {
-      return <File className="w-8 h-8 text-muted-foreground" />;
-    }
-  };
-
-  const analyticsData = useMemo(() => {
-    // Check-ins by day for the last 30 days
-    const last30Days = Array.from({ length: 30 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (29 - i));
-      return date.toISOString().split('T')[0];
-    });
-
-    const checkInsByDay = last30Days.map(date => {
-      const count = data.filter(record =>
-        record.check_in_time.startsWith(date)
-      ).length;
-      return {
-        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        checkIns: count
-      };
-    });
-
-    // Peak hours
-    const hours = Array.from({ length: 24 }, (_, i) => i);
-    const checkInsByHour = hours.map(hour => {
-      const count = data.filter(record => {
-        const recordHour = new Date(record.check_in_time).getHours();
-        return recordHour === hour;
-      }).length;
-      return {
-        hour: `${hour}:00`,
-        checkIns: count
-      };
-    });
-
-    // File uploads by month
-    const filesByMonth = files.reduce((acc, file) => {
-      const month = new Date(file.uploaded_at).toISOString().slice(0, 7);
-      acc[month] = (acc[month] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    const fileUploadsByMonth = Object.entries(filesByMonth)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, count]) => ({
-        month: new Date(month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'short' }),
-        uploads: count
-      }));
-
-    return { checkInsByDay, checkInsByHour, fileUploadsByMonth };
-  }, [data, files]);
-
-  const dashboardFilteredData = useMemo(() => {
-    return data.filter(record => {
-      const matchesName = !dashboardFilters.fullName || record.full_name.toLowerCase().includes(dashboardFilters.fullName.toLowerCase());
-      const recordDate = new Date(record.check_in_time).toISOString().split('T')[0];
-      const matchesDateFrom = !dashboardFilters.dateFrom || recordDate >= dashboardFilters.dateFrom;
-      const matchesDateTo = !dashboardFilters.dateTo || recordDate <= dashboardFilters.dateTo;
-
-      return matchesName && matchesDateFrom && matchesDateTo;
-    });
-  }, [data, dashboardFilters]);
-
-  const monthlyData = useMemo(() => {
-    const monthGroups: { [key: string]: CheckInRecord[] } = {};
-    const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-
-    dashboardFilteredData.forEach(record => {
+    data.forEach(record => {
       const date = new Date(record.check_in_time);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthGroups[monthKey]) monthGroups[monthKey] = [];
-      monthGroups[monthKey].push(record);
-    });
+      const year = date.getFullYear();
+      const month = date.toLocaleString('default', { month: 'long' });
+      const day = date.getDate().toString();
 
-    const result: MonthlyData[] = Object.entries(monthGroups)
-      .map(([monthKey, records]) => {
-        const [year, month] = monthKey.split('-');
-        const days: { [day: string]: CheckInRecord[] } = {};
+      const key = `${year}-${month}`;
 
-        records.forEach(record => {
-          const day = new Date(record.check_in_time).toISOString().split('T')[0];
-          if (!days[day]) days[day] = [];
-          days[day].push(record);
-        });
-
-        return {
-          month: monthNames[parseInt(month) - 1],
-          year: parseInt(year),
-          days
+      if (!monthlyMap[key]) {
+        monthlyMap[key] = {
+          month,
+          year,
+          days: {}
         };
-      })
-      .sort((a, b) => {
-        if (a.year !== b.year) return b.year - a.year;
-        return monthNames.indexOf(a.month) - monthNames.indexOf(b.month);
-      });
+      }
 
-    // Set default selected month and day
-    if (result.length > 0 && !selectedMonth) {
-      setSelectedMonth(`${result[0].year}-${String(monthNames.indexOf(result[0].month) + 1).padStart(2, '0')}`);
-      const firstDay = Object.keys(result[0].days)[0];
-      if (firstDay) setSelectedDay(firstDay);
-    }
+      if (!monthlyMap[key].days[day]) {
+        monthlyMap[key].days[day] = [];
+      }
 
-    return result;
-  }, [dashboardFilteredData, selectedMonth]);
-
-  const selectedMonthData = monthlyData.find(m =>
-    `${m.year}-${String(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(m.month) + 1).padStart(2, '0')}` === selectedMonth
-  );
-
-  const selectedDayRecords = selectedMonthData?.days[selectedDay] || [];
-
-  const dashboardAnalyticsData = useMemo(() => {
-    if (!selectedMonthData) return { checkInsByDay: [] };
-
-    const dayCount: { [key: string]: number } = {};
-
-    Object.values(selectedMonthData.days).flat().forEach(record => {
-      const day = new Date(record.check_in_time).getDate();
-      dayCount[day] = (dayCount[day] || 0) + 1;
+      monthlyMap[key].days[day].push(record);
     });
 
-    const checkInsByDay = Object.entries(dayCount).map(([day, count]) => ({
-      day: `${day}`,
-      checkIns: count
-    }));
+    const monthlyArray = Object.values(monthlyMap).sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      return new Date(`${a.month} 1`).getMonth() - new Date(`${b.month} 1`).getMonth();
+    });
 
-    return { checkInsByDay };
-  }, [selectedMonthData]);
+    setMonthlyData(monthlyArray);
+  }, [data]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Navigation />
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-6 h-6 animate-spin" />
-              <span>Loading admin dashboard...</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Update selected month data
+  useEffect(() => {
+    if (selectedMonth) {
+      const monthData = monthlyData.find(m =>
+        `${m.year}-${String(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(m.month) + 1).padStart(2, '0')}` === selectedMonth
+      );
+      setSelectedMonthData(monthData || null);
+    }
+  }, [selectedMonth, monthlyData]);
+
+  // Update selected day records
+  useEffect(() => {
+    if (selectedMonthData && selectedDay) {
+      setSelectedDayRecords(selectedMonthData.days[selectedDay] || []);
+    }
+  }, [selectedMonthData, selectedDay]);
+
+  // ... rest of the code remains the same ...
 
   return (
     <div className="min-h-screen bg-background">
@@ -1428,8 +1174,11 @@ Generated on: ${new Date().toLocaleString()}`,
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-heading text-foreground">Admin Dashboard</h1>
-              <p className="text-sm sm:text-base text-muted-foreground mt-1">
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <Users className="h-6 w-6" />
+                Admin Dashboard
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
                 Full administrative access to all check-in records
               </p>
             </div>
@@ -1454,7 +1203,7 @@ Generated on: ${new Date().toLocaleString()}`,
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Total Records</p>
-                  <p className="text-2xl font-heading text-foreground">{stats.totalRecords}</p>
+                  <p className="text-2xl font-bold">{stats.totalRecords}</p>
                   <p className="text-xs text-muted-foreground mt-1">↗ +12% this week</p>
                 </div>
               </div>
@@ -1467,7 +1216,7 @@ Generated on: ${new Date().toLocaleString()}`,
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Active Check-Ins</p>
-                  <p className="text-2xl font-heading text-foreground">{stats.activeCheckIns}</p>
+                  <p className="text-2xl font-bold">{stats.activeCheckIns}</p>
                   <p className="text-xs text-muted-foreground mt-1">↗ +8% today</p>
                 </div>
               </div>
@@ -1480,7 +1229,7 @@ Generated on: ${new Date().toLocaleString()}`,
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Completed Sessions</p>
-                  <p className="text-2xl font-heading text-foreground">{stats.completedSessions}</p>
+                  <p className="text-2xl font-bold">{stats.completedSessions}</p>
                   <p className="text-xs text-muted-foreground mt-1">↗ +15% this month</p>
                 </div>
               </div>
@@ -1493,7 +1242,7 @@ Generated on: ${new Date().toLocaleString()}`,
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Unique Users</p>
-                  <p className="text-2xl font-heading text-foreground">{stats.uniqueUsers}</p>
+                  <p className="text-2xl font-bold">{stats.uniqueUsers}</p>
                   <p className="text-xs text-muted-foreground mt-1">↗ +5% this week</p>
                 </div>
               </div>
@@ -1501,7 +1250,7 @@ Generated on: ${new Date().toLocaleString()}`,
           </div>
 
           <Tabs defaultValue="dashboard" className="space-y-4 sm:space-y-6">
-            <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 transition-all duration-300 h-auto p-1">
+            <TabsList className="grid w-full grid-cols-2 lg:grid-cols-7 transition-all duration-300 h-auto p-1">
               <TabsTrigger value="dashboard" className="transition-all duration-200 text-xs sm:text-sm">Dashboard</TabsTrigger>
               <TabsTrigger value="records" className="transition-all duration-200 text-xs sm:text-sm">Records</TabsTrigger>
               <TabsTrigger value="employees" className="transition-all duration-200 text-xs sm:text-sm">Employees</TabsTrigger>
@@ -1511,6 +1260,20 @@ Generated on: ${new Date().toLocaleString()}`,
                 onClick={() => navigate('/guest-dashboard')}
               >
                 Guests
+              </TabsTrigger>
+              <TabsTrigger
+                value="workshop"
+                className="transition-all duration-200 text-xs sm:text-sm"
+                onClick={() => navigate('/workshop')}
+              >
+                Workshop
+              </TabsTrigger>
+              <TabsTrigger
+                value="children"
+                className="transition-all duration-200 text-xs sm:text-sm"
+                onClick={() => navigate('/children')}
+              >
+                Children
               </TabsTrigger>
               <TabsTrigger value="files" className="transition-all duration-200 text-xs sm:text-sm">Files</TabsTrigger>
               <TabsTrigger value="analytics" className="transition-all duration-200 text-xs sm:text-sm">Analytics</TabsTrigger>

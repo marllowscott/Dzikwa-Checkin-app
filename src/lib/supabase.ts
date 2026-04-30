@@ -36,6 +36,95 @@ export const supabase = createClient(supabaseUrl || '', supabaseKey || '', {
   },
 })
 
+const supabaseServiceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
+const adminClientKey = supabaseServiceRoleKey || supabaseKey || ''
+
+if (!supabaseServiceRoleKey && import.meta.env.DEV) {
+  console.warn(
+    "⚠️ VITE_SUPABASE_SERVICE_ROLE_KEY is not set. Admin client will fall back to the anon key. " +
+    "If you need server-side admin access, move service-role operations to a backend endpoint instead of using a frontend-secret."
+  )
+}
+
+// Admin Supabase client with service role key for admin operations.
+// If the service role key is not available in the browser, use anon key instead.
+export const adminSupabase = createClient(supabaseUrl || '', adminClientKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+  db: {
+    schema: 'public',
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'dzikwa-checkin/1.0.0',
+    },
+  },
+})
+
+// Admin management functions
+export const adminManagement = {
+  // Create Super Admin account
+  createSuperAdmin: async (email: string, password: string) => {
+    const { data, error } = await adminSupabase
+      .from('users')
+      .insert({
+        email,
+        password_hash: password,
+        role: 'superadmin'
+      })
+      .select()
+      .single();
+
+    return { data, error };
+  },
+
+  getAllAdmins: async () => {
+    const { data, error } = await adminSupabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    return { data, error };
+  },
+
+  addAdmin: async (email: string, password: string) => {
+    const { data, error } = await adminSupabase
+      .from('users')
+      .insert({
+        email,
+        password_hash: password,
+        role: 'admin'
+      })
+      .select()
+      .single();
+
+    return { data, error };
+  },
+
+  removeAdmin: async (adminId: string) => {
+    const { data, error } = await adminSupabase
+      .from('users')
+      .delete()
+      .eq('id', adminId)
+      .select()
+      .single();
+
+    return { data, error };
+  },
+
+  getAdminByEmail: async (email: string) => {
+    const { data, error } = await adminSupabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    return { data, error };
+  }
+}
+
 // Optimized query functions
 export const supabaseQueries = {
   // Get recent check-ins with pagination
@@ -119,11 +208,21 @@ export const supabaseQueries = {
       .ilike('full_name', `%${query}%`)
       .limit(10);
 
+    // Search workshop guests (guests with workshop-related purposes)
+    const { data: workshopGuests } = await supabase
+      .from('guests')
+      .select('id, full_name, is_active')
+      .eq('is_active', true)
+      .ilike('full_name', `%${query}%`)
+      .ilike('purpose', '%workshop%')
+      .limit(10);
+
     // Format results with domain type
     const results = [
       ...(employees || []).map(e => ({ ...e, domain: 'employee', domainLabel: 'Employee' })),
       ...(guests || []).map(g => ({ ...g, domain: 'guest', domainLabel: 'Guest' })),
-      ...(children || []).map(c => ({ ...c, domain: 'child', domainLabel: 'Child' }))
+      ...(children || []).map(c => ({ ...c, domain: 'child', domainLabel: 'Child' })),
+      ...(workshopGuests || []).map(w => ({ ...w, domain: 'workshop', domainLabel: 'Workshop' }))
     ];
 
     console.log('Unified search results:', results);
@@ -321,9 +420,7 @@ export const supabaseQueries = {
 }
 
 // Export individual functions for direct access
-export const searchEmployees = supabaseQueries.searchEmployees;
-export const searchAllDomains = supabaseQueries.searchAllDomains;
-export const getActiveEmployeesForCheckout = supabaseQueries.getActiveEmployeesForCheckout;
+
 // Guest Management Functions
 export const createGuest = async (guestData: {
   full_name: string;
@@ -349,6 +446,11 @@ export const createGuest = async (guestData: {
   return data;
 };
 
+// Export individual functions
+export const searchEmployees = supabaseQueries.searchEmployees;
+export const searchAllDomains = supabaseQueries.searchAllDomains;
+export const getActiveEmployeesForCheckout = supabaseQueries.getActiveEmployeesForCheckout;
+// Guest Management Functions
 export const getGuests = async () => {
   return await supabase
     .from('guests')

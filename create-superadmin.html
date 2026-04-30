@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Super Admin</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Creating Super Admin...</h1>
+    <div id="status"></div>
+    
+    <script>
+        const { createClient } = supabase;
+        
+        // Use your environment variables here
+        const supabaseUrl = 'https://qdighwfpcnhhcnerzzvy.supabase.co';
+        const serviceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkaWdod2ZwY25oaGNuZXJ6enV5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTY3OTM2MiwiZXhwIjoyMDg1MjU1MzYyfQ.gr4FoHP_a6BN3fEKVosvtZvi7YA1WM1LdtTeBh4vhOo';
+        
+        const supabase = createClient(supabaseUrl, serviceRoleKey);
+        
+        async function createSuperAdmin() {
+            const status = document.getElementById('status');
+            
+            try {
+                status.innerHTML = '🔧 Creating Super Admin account...';
+                
+                // Create Super Admin
+                const { data, error } = await supabase
+                    .from('admin_users')
+                    .upsert([
+                        {
+                            email: 'superadmin@gmail.com',
+                            password: 'admin123',
+                            role: 'superadmin',
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        }
+                    ], {
+                        onConflict: 'email'
+                    });
+                
+                if (error) {
+                    status.innerHTML = `❌ Error: ${error.message}`;
+                    console.error('Error:', error);
+                } else {
+                    status.innerHTML = '✅ Super Admin created successfully!<br>';
+                    status.innerHTML += '📧 Email: superadmin@gmail.com<br>';
+                    status.innerHTML += '🔑 Password: admin123<br>';
+                    status.innerHTML += '👑 Role: superadmin<br><br>';
+                    status.innerHTML += '🎉 Super Admin system ready!';
+                }
+                
+                // Verify creation
+                const { data: admins, error: verifyError } = await supabase
+                    .from('admin_users')
+                    .select('email, role, created_at')
+                    .order('created_at', { ascending: false });
+                
+                if (!verifyError) {
+                    status.innerHTML += '<br><br>📋 Current admins:<br>';
+                    admins.forEach(admin => {
+                        const crown = admin.role === 'superadmin' ? '👑' : '👤';
+                        status.innerHTML += `${crown} ${admin.email} (${admin.role})<br>`;
+                    });
+                }
+                
+            } catch (error) {
+                status.innerHTML = `❌ Error: ${error.message}`;
+                console.error('Error:', error);
+            }
+        }
+        
+        // Run on page load
+        createSuperAdmin();
+    </script>
+</body>
+</html>

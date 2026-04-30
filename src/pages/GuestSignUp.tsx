@@ -21,7 +21,7 @@ export default function GuestSignUp() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.full_name.trim()) {
       toast({
         title: "Error",
@@ -32,22 +32,22 @@ export default function GuestSignUp() {
     }
 
     setIsLoading(true);
-    
+
     try {
       // Create guest profile
       const guest = await createGuest(formData);
-      
+
       // Automatically check in the guest
       await checkInGuest(guest.id, formData.purpose || 'Visit');
-      
+
       toast({
         title: "Welcome!",
         description: `${guest.full_name} has been registered and checked in successfully.`,
       });
-      
+
       // Navigate to main check-in page
       navigate("/");
-      
+
     } catch (error) {
       console.error("Error creating guest:", error);
       toast({
@@ -69,7 +69,7 @@ export default function GuestSignUp() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 sm:p-6">
-      
+
       <Card className="w-full max-w-md sm:max-w-lg p-4 sm:p-6 lg:p-8 bg-gradient-card shadow-elevation rounded-[7px]">
         <div className="text-center mb-6 sm:mb-8">
           <div className="mx-auto w-12 h-12 sm:w-16 sm:h-16 bg-primary/10 rounded-[7px] flex items-center justify-center mb-3 sm:mb-4 shadow-button">
@@ -163,11 +163,8 @@ export default function GuestSignUp() {
         </form>
 
         <div className="mt-4 sm:mt-6 text-center">
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Already registered? 
-            <a href="/admin-login" className="text-primary hover:underline ml-1">
-              Admin Login
-            </a>
+          <p className="text-xs text-muted-foreground opacity-50">
+            Admin access: Double-tap 'A' key
           </p>
         </div>
       </Card>

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { supabase, searchAllDomains, checkPersonStatus } from "@/lib/supabase";
+import { searchAllDomains, checkPersonStatus } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
 
 // Unified person type for all domains
@@ -12,7 +12,7 @@ interface Person {
   id: string;
   full_name: string;
   is_active: boolean;
-  domain: 'employee' | 'guest' | 'child';
+  domain: 'employee' | 'guest' | 'child' | 'workshop';
   domainLabel: string;
 }
 
@@ -59,10 +59,10 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
 
     try {
       const results = await searchAllDomains(query);
-      
+
       // Filter to only show active people
       const activeResults = (results || []).filter((r: Person) => r.is_active);
-      
+
       setSuggestions(activeResults);
       setShowSuggestions(true);
     } catch (error) {

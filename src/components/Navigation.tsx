@@ -10,7 +10,7 @@ import { useEffect, useState, useMemo, memo } from "react";
 const NavigationItem = memo(({ href, label, icon: Icon, isActive }: {
   href: string;
   label: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<{ className?: string }>;
   isActive: boolean;
 }) => (
   <Link key={href} to={href}>
@@ -80,6 +80,7 @@ export const Navigation = memo(() => {
 
   const navItems = useMemo(() => {
     const isGuestPage = location.pathname === '/guest-signup';
+    const isAdminPage = location.pathname.startsWith('/admin') || location.pathname === '/guest-dashboard' || location.pathname === '/stored-records';
 
     if (isGuestPage) {
       // Only show minimal navigation for guests
@@ -88,18 +89,14 @@ export const Navigation = memo(() => {
       ];
     }
 
+    // HIDE ADMIN UI - Admin access only via double-tap 'A' trigger
+    // No admin buttons or links visible in navigation
     return [
       { href: "/", label: "Check In/Out", icon: CheckInIcon },
       { href: "/logs", label: "View Logs", icon: ViewLogsIcon },
-      ...(isAdmin
-        ? [
-          { href: "/admin-dashboard", label: "Admin", icon: AdminIcon },
-          { href: "/stored-records", label: "Records Storage", icon: Archive }
-        ]
-        : [{ href: "/admin-login", label: "Admin", icon: AdminIcon }]
-      ),
     ];
-  }, [isAdmin, location.pathname]);
+
+  }, [location.pathname]);
 
   return (
     <nav className="sticky top-0 z-50 bg-card/80 backdrop-blur-md shadow-card">

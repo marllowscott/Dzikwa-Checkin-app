@@ -56,6 +56,24 @@ export default function Index() {
           description: `Welcome ${child?.full_name || 'Child'}. Logged in at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
+      } else if (domain === 'workshop') {
+        // Workshop guests use the same logic as regular guests
+        // Get guest details first
+        const { data: guest } = await supabase
+          .from('guests')
+          .select('full_name')
+          .eq('id', personId)
+          .single();
+
+        const { data, error } = await checkInGuest(personId, 'Workshop Check-in');
+
+        if (error) throw error;
+
+        toast({
+          title: "Workshop Check-in Successful!",
+          description: `Welcome ${guest?.full_name || 'Workshop Guest'}. Logged in at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
       }
     } catch (error) {
       console.error('Check-in error:', error);
@@ -131,6 +149,31 @@ export default function Index() {
           description: `Goodbye ${activeCheckIn.dzikwa_children?.full_name || 'Child'}. Logged out at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
+      } else if (domain === 'workshop') {
+        // Workshop guests use the same check-out logic as regular guests
+        // Find the active guest check-in
+        const { data: activeCheckIn } = await supabase
+          .from('guest_check_ins')
+          .select('*, guests!full_name(*)')
+          .eq('guest_id', personId)
+          .is('check_out_time', null)
+          .order('check_in_time', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!activeCheckIn) {
+          throw new Error('No active check-in found');
+        }
+
+        const { data, error } = await checkOutGuest(activeCheckIn.id);
+
+        if (error) throw error;
+
+        toast({
+          title: "Workshop Check-out Successful!",
+          description: `Goodbye ${activeCheckIn.guests?.full_name || 'Workshop Guest'}. Logged out at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
       }
     } catch (error: any) {
       console.error('Check-out error:', error);
@@ -168,15 +211,14 @@ export default function Index() {
 
           <div className="mt-6 sm:mt-8 text-center px-4">
             <p className="text-xs sm:text-sm text-muted-foreground">
-              View attendance records on the{" "}
-              <a href="/dashboard" className="text-primary hover:underline font-medium">
-                Dashboard
-              </a>{" "}
-              or{" "}
+              View attendance records on{" "}
               <a href="/logs" className="text-primary hover:underline font-medium">
                 Logs
               </a>{" "}
-              pages.
+              page.
+            </p>
+            <p className="text-xs text-muted-foreground mt-2 opacity-50">
+              Admin access: Double-tap 'A' key
             </p>
           </div>
         </div>

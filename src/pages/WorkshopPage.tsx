@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { createGuest, checkInGuest, getActiveGuestCheckIns } from "@/lib/supabase";
+import { createGuest, checkInGuest, getGuestCheckIns } from "@/lib/supabase";
 
 export default function WorkshopPage() {
   const [activeTab, setActiveTab] = useState("esteemed");
@@ -45,7 +45,7 @@ export default function WorkshopPage() {
 
   const handleSubmit = async (formType: string) => {
     const formData = formType === "esteemed" ? esteemedForm : commonForm;
-    
+
     if (!formData.full_name.trim()) {
       toast({
         title: "Error",
@@ -56,26 +56,26 @@ export default function WorkshopPage() {
     }
 
     setIsLoading(true);
-    
+
     try {
       // Create guest profile
       const guest = await createGuest({
         full_name: formData.full_name,
         email: formType === "esteemed" ? formData.email : (formData.email || undefined),
         phone: formType === "esteemed" ? formData.phone : (formData.phone || undefined),
-        company: formType === "esteemed" ? formData.organization : undefined,
-        purpose: formType === "esteemed" ? `Esteemed Guest - ${formData.special_requirements || 'Visit'}` : 'Workshop Guest',
+        company: formType === "esteemed" ? (formData as any).organization : undefined,
+        purpose: formType === "esteemed" ? `Esteemed Guest - ${(formData as any).special_requirements || 'Visit'}` : 'Workshop Guest',
       });
-      
+
       // Automatically check in the guest
       await checkInGuest(guest.id, formType === "esteemed" ? `Esteemed Guest Visit` : 'Workshop Guest');
-      
+
       toast({
         title: formType === "esteemed" ? "Welcome, Esteemed Guest!" : "Welcome!",
         description: `${guest.full_name} has been checked in successfully.`,
         variant: formType === "esteemed" ? "default" : "default",
       });
-      
+
       // Reset form
       if (formType === "esteemed") {
         setEsteemedForm({
@@ -94,7 +94,7 @@ export default function WorkshopPage() {
           guest_type: "common"
         });
       }
-      
+
     } catch (error) {
       console.error("Error checking in guest:", error);
       toast({
@@ -109,28 +109,31 @@ export default function WorkshopPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 sm:p-6">
-      
+
       <div className="w-full max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <div className="mx-auto w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-amber-500 to-orange-600 rounded-[7px] flex items-center justify-center mb-4 shadow-elevation">
             <span className="text-3xl sm:text-4xl font-bold text-white">🎓</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Workshop Guest Check-In</h2>
-          <p className="text-sm sm:text-base text-muted-foreground mt-2">
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Users className="h-6 w-6" />
+            Workshop Guest Check-In
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Please select your guest type below
           </p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger 
-              value="esteemed" 
+            <TabsTrigger
+              value="esteemed"
               className="text-sm sm:text-base py-3 data-[state=active]:bg-amber-500 data-[state=active]:text-white"
             >
               <span className="mr-2">👑</span>
               Esteemed Guests
             </TabsTrigger>
-            <TabsTrigger 
+            <TabsTrigger
               value="common"
               className="text-sm sm:text-base py-3 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
             >
@@ -146,7 +149,7 @@ export default function WorkshopPage() {
                 <Badge className="bg-amber-500 text-white text-sm px-3 py-1">
                   VIP
                 </Badge>
-                <h3 className="text-lg sm:text-xl font-semibold text-amber-800">
+                <h3 className="text-lg font-heading">
                   Esteemed Guest Registration
                 </h3>
               </div>
@@ -242,7 +245,7 @@ export default function WorkshopPage() {
                 <Badge className="bg-blue-600 text-white text-sm px-3 py-1">
                   Workshop
                 </Badge>
-                <h3 className="text-lg sm:text-xl font-semibold text-blue-800">
+                <h3 className="text-lg font-heading">
                   Workshop Guest Check-In
                 </h3>
               </div>
@@ -304,11 +307,8 @@ export default function WorkshopPage() {
         </Tabs>
 
         <div className="mt-6 text-center">
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Need help? 
-            <a href="/admin-login" className="text-primary hover:underline ml-1">
-              Contact Staff
-            </a>
+          <p className="text-xs text-muted-foreground opacity-50">
+            Admin access: Double-tap 'A' key
           </p>
         </div>
       </div>

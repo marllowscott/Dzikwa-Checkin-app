@@ -1,17 +1,20 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+dotenv.config();
 
 const router = express.Router();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const jwtSecret = process.env.JWT_SECRET;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment');
-}
+const supabaseUrl = process.env.SUPABASE_URL || 'https://qdighwfpcnhhcnerzzvy.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkaWdod2ZwY25oaGNuZXJ6enV5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTY3OTM2MiwiZXhwIjoyMDg1MjU1MzYyfQ.gr4FoHP_a6BN3fEKVosvtZvi7YA1WM1LdtTeBh4vhOo';
+const jwtSecret = 'super_secret_jwt_key_12345';
 
 if (!jwtSecret) {
   // eslint-disable-next-line no-console
@@ -25,7 +28,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 // Check if initial setup is required (no admins exist)
 router.get('/setup-required', async (req, res) => {
   try {
-    const { count, error } = await supabase.from('admins').select('*', { count: 'exact', head: true });
+    const { count, error } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
     if (error) {
       // If table doesn't exist, treat as setup required
       if (error.message.includes('relation') || error.code === 'PGRST116') {
@@ -52,11 +55,11 @@ router.post('/create', async (req, res) => {
     try {
       await supabase.rpc('exec', {
         query: `
-          CREATE TABLE IF NOT EXISTS admins (
+          CREATE TABLE IF NOT EXISTS admin_users (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('superadmin', 'admin')),
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
           );
@@ -64,16 +67,16 @@ router.post('/create', async (req, res) => {
       });
     } catch (tableErr) {
       // Table creation via RPC might not work, continue anyway
-      console.warn('Could not auto-create admins table:', tableErr.message);
+      console.warn('Could not auto-create admin_users table:', tableErr.message);
     }
 
-    const { count, error: countErr } = await supabase.from('admins').select('*', { count: 'exact', head: true });
+    const { count, error: countErr } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
     if (countErr && !countErr.message.includes('relation')) {
       throw countErr;
     }
 
     if (count && count > 0) {
-      // admins already exist - require admin auth token
+      // admin_users already exist - require admin auth token
       const authHeader = req.headers.authorization || '';
       const token = authHeader.split(' ')[1];
       if (!token) return res.status(403).json({ message: 'Unauthorized. Only existing admins can create new accounts.' });
@@ -85,18 +88,17 @@ router.post('/create', async (req, res) => {
     }
 
     // Check existing email
-    const { data: existing, error: existingErr } = await supabase.from('admins').select('id').eq('email', email).maybeSingle();
+    const { data: existing, error: existingErr } = await supabase.from('admin_users').select('id').eq('email', email).maybeSingle();
     if (existingErr && !existingErr.message.includes('relation')) {
       throw existingErr;
     }
     if (existing) return res.status(400).json({ message: 'Email already registered' });
 
-    const hashed = await bcrypt.hash(password, 10);
-    const { error: insertErr } = await supabase.from('admins').insert([{ name, email, password: hashed }]);
+    const { error: insertErr } = await supabase.from('admin_users').insert([{ email, password, role: 'admin' }]);
     if (insertErr) {
       // If table doesn't exist, try creating it again
       if (insertErr.message.includes('relation') || insertErr.code === 'PGRST116') {
-        return res.status(500).json({ message: 'Admin table does not exist. Please run the SQL schema in your Supabase dashboard.' });
+        return res.status(500).json({ message: 'Admin_users table does not exist. Please run the SQL schema in your Supabase dashboard.' });
       }
       throw insertErr;
     }
@@ -115,15 +117,16 @@ router.post('/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ message: 'All fields are required' });
 
   try {
-    const { data, error } = await supabase.from('admins').select('*').eq('email', email).maybeSingle();
+    const { data, error } = await supabase.from('admin_users').select('*').eq('email', email).maybeSingle();
     if (error) throw error;
     if (!data) return res.status(401).json({ message: 'Invalid email or password' });
 
-    const isValid = await bcrypt.compare(password, data.password);
+    // Plain text password comparison (temporary)
+    const isValid = (password === data.password);
     if (!isValid) return res.status(401).json({ message: 'Invalid email or password' });
 
-    const token = jwt.sign({ id: data.id, email: data.email }, jwtSecret || 'dev-secret', { expiresIn: '24h' });
-    res.json({ token, message: 'Login successful' });
+    const token = jwt.sign({ id: data.id, email: data.email, role: data.role }, jwtSecret || 'dev-secret', { expiresIn: '24h' });
+    res.json({ token, role: data.role, message: 'Login successful' });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(err);
@@ -141,8 +144,8 @@ router.post('/verify', async (req, res) => {
   }
 
   try {
-    jwt.verify(token, jwtSecret || 'dev-secret');
-    res.json({ valid: true, message: 'Token is valid' });
+    const decoded = jwt.verify(token, jwtSecret || 'dev-secret');
+    res.json({ valid: true, role: decoded.role, message: 'Token is valid' });
   } catch (err) {
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
@@ -153,6 +156,117 @@ router.post('/logout', (req, res) => {
   // Client should remove token from localStorage
   // Server-side we could add token to blacklist if needed
   res.json({ message: 'Logged out successfully' });
+});
+
+// Middleware to verify superadmin role
+const verifySuperAdmin = async (req, res, next) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, jwtSecret || 'dev-secret');
+    if (decoded.role !== 'superadmin') {
+      return res.status(403).json({ message: 'Super admin access required' });
+    }
+    req.adminId = decoded.id;
+    req.adminRole = decoded.role;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Invalid or expired token' });
+  }
+};
+
+// Get all admins (super admin only)
+router.get('/admins', verifySuperAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('admin_users')
+      .select('id, email, role, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching admins:', err);
+    res.status(500).json({ message: 'Error fetching admins' });
+  }
+});
+
+// Create new admin (super admin only)
+router.post('/admins', verifySuperAdmin, async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required' });
+  }
+
+  try {
+    // Check if email already exists
+    const { data: existing, error: existingErr } = await supabase
+      .from('admin_users')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (existingErr && !existingErr.message.includes('relation')) {
+      throw existingErr;
+    }
+    if (existing) return res.status(400).json({ message: 'Email already registered' });
+
+    // Plain text password (temporary)
+    const { data, error } = await supabase
+      .from('admin_users')
+      .insert([{ email, password, role: 'admin' }])
+      .select('id, email, role, created_at')
+      .single();
+
+    if (error) throw error;
+    res.status(201).json({ message: 'Admin created successfully', admin: data });
+  } catch (err) {
+    console.error('Error creating admin:', err);
+    res.status(500).json({ message: 'Error creating admin' });
+  }
+});
+
+// Delete admin (super admin only)
+router.delete('/admins/:id', verifySuperAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  // Prevent deleting the last superadmin
+  try {
+    const { data: superAdmins, error: countErr } = await supabase
+      .from('admin_users')
+      .select('id', { count: 'exact' })
+      .eq('role', 'superadmin');
+
+    if (countErr) throw countErr;
+
+    const { data: targetAdmin, error: targetErr } = await supabase
+      .from('admin_users')
+      .select('role')
+      .eq('id', id)
+      .single();
+
+    if (targetErr) throw targetErr;
+
+    if (targetAdmin.role === 'superadmin' && superAdmins.length <= 1) {
+      return res.status(400).json({ message: 'Cannot delete the last super admin' });
+    }
+
+    const { error } = await supabase
+      .from('admin_users')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    res.json({ message: 'Admin deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting admin:', err);
+    res.status(500).json({ message: 'Error deleting admin' });
+  }
 });
 
 export default router;

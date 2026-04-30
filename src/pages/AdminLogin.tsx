@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AdminIcon } from "@/components/ui/AdminIcon";
-import { supabase } from "@/lib/supabase";
-import bcrypt from 'bcryptjs';
+import { adminSupabase, adminManagement } from '../lib/supabase';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState("");
@@ -33,80 +32,53 @@ export default function AdminLogin() {
     try {
       console.log('Attempting login with email:', email);
 
-      // Query the admin_users table
-      const { data: admin, error } = await supabase
-        .from('admin_users')
+      // Use adminSupabase client for authentication
+      const { data, error } = await adminSupabase
+        .from('users')
         .select('*')
         .eq('email', email)
+        .eq('password_hash', password)
+        .eq('is_active', true)
         .single();
 
-      console.log('Supabase response:', { admin, error });
-
       if (error) {
-        console.error('Supabase error:', error);
-
-        // Check if it's a table not found error
-        if (error.code === 'PGRST116' || error.message?.includes('relation') || error.message?.includes('does not exist')) {
-          toast({
-            title: "Database Error",
-            description: "The admins table doesn't exist. Please run the SQL schema in Supabase.",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Login Failed",
-            description: error.message || "Database error. Please check console.",
-            variant: "destructive",
-          });
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      if (!admin) {
+        console.error('Login error:', error);
         toast({
           title: "Login Failed",
-          description: "Invalid email or password",
+          description: error.message || "Invalid credentials",
           variant: "destructive",
         });
         setIsLoading(false);
         return;
       }
 
-      console.log('Admin found:', JSON.stringify(admin));
-      console.log('User password input:', password);
-      console.log('Stored password hash:', admin.password_hash);
-
-      // Use direct comparison (password is likely stored as plain text)
-      const isValidPassword = password === admin.password_hash;
-      console.log('Password validation (direct comparison):', isValidPassword);
-
-      if (!isValidPassword) {
+      if (!data) {
         toast({
           title: "Login Failed",
-          description: "Invalid email or password",
+          description: "Invalid credentials",
           variant: "destructive",
         });
         setIsLoading(false);
         return;
       }
-
-      // Store admin session
-      localStorage.setItem('adminToken', admin.id);
-      localStorage.setItem('isAdmin', 'true');
-      localStorage.setItem('adminName', admin.full_name);
 
       console.log('✅ Login successful!');
-      console.log('Admin data:', admin);
-      console.log('localStorage set:', {
-        adminToken: localStorage.getItem('adminToken'),
-        isAdmin: localStorage.getItem('isAdmin'),
-        adminName: localStorage.getItem('adminName')
-      });
+      console.log('User data:', data);
+
+      // Store admin session with role
+      localStorage.setItem('adminToken', 'authenticated');
+      localStorage.setItem('isAdmin', 'true');
+      localStorage.setItem('adminEmail', data.email);
+      localStorage.setItem('adminId', data.id);
+      localStorage.setItem('adminName', data.email);
+      localStorage.setItem('adminRole', data.role || 'admin');
+
+      // Dispatch custom event for navigation update
+      window.dispatchEvent(new Event('adminStateChange'));
 
       toast({
         title: "Success",
-        description: `Welcome back, ${admin.full_name}!`,
+        description: data.role === 'superadmin' ? "Welcome back, Super Admin!" : "Welcome back, Admin!",
       });
 
       // Redirect to admin dashboard
