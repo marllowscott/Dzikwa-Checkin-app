@@ -638,6 +638,8 @@ export const createCheckIn = supabaseQueries.createCheckIn;
 export const createCheckOut = supabaseQueries.createCheckOut;
 export const checkInGuest = supabaseQueries.createGuestCheckIn;
 export const checkOutGuest = supabaseQueries.checkOutGuest;
+export const checkInWorkshop = supabaseQueries.checkInWorkshop;
+export const checkOutWorkshop = supabaseQueries.checkOutWorkshop;
 
 // Sadza Statistics Functions
 export const createSadzaRecipient = async (recipientData: {

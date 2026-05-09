@@ -1,13 +1,57 @@
 import { useState, useEffect, useCallback } from "react";
 import { Navigation } from "@/components/Navigation";
 import { CheckInForm } from "@/components/CheckInForm";
+import { FloatingAddButton } from "@/components/universal-door/FloatingAddButton";
+import { DomainSelectorModal } from "@/components/universal-door/DomainSelectorModal";
+import { DynamicDomainForm } from "@/components/universal-door/DynamicDomainForm";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 import { createCheckIn, createCheckOut, checkInGuest, checkOutGuest, checkInChild, checkOutChild, supabase } from "@/lib/supabase";
 import { checkInWorkshopGuest, checkOutWorkshopGuest } from "@/lib/workshop";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function Index() {
   const [isLoading, setIsLoading] = useState(false);
+  const [showDomainSelector, setShowDomainSelector] = useState(false);
+  const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Floating add button handlers
+  const handleAddButtonClick = () => {
+    setShowDomainSelector(true);
+  };
+
+  const handleDomainSelect = (domain: string) => {
+    setSelectedDomain(domain);
+  };
+
+  const handleCloseForm = () => {
+    setSelectedDomain(null);
+  };
+
+  // Admin trigger - typing "admin"
+  useEffect(() => {
+    let inputBuffer = '';
+    const handleKeyDown = (e: KeyboardEvent) => {
+      inputBuffer += e.key.toLowerCase();
+
+      // Check if "admin" was typed
+      if (inputBuffer.includes('admin')) {
+        e.preventDefault();
+        navigate('/admin-login');
+        inputBuffer = '';
+      }
+
+      // Keep buffer manageable (last 10 characters)
+      if (inputBuffer.length > 10) {
+        inputBuffer = inputBuffer.slice(-10);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
 
   // Unified check-in handler for all domains
   const handleCheckIn = async (personId: string, domain: string) => {
@@ -56,6 +100,23 @@ export default function Index() {
         toast({
           title: "Workshop Check-in Successful!",
           description: `Welcome ${guest?.full_name || 'Workshop Guest'}. Logged in at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
+      } else if (domain === 'children') {
+        // Get child details first
+        const { data: child } = await supabase
+          .from('dzikwa_children')
+          .select('full_name')
+          .eq('id', personId)
+          .single();
+
+        const { data, error } = await checkInChild(personId);
+
+        if (error) throw error;
+
+        toast({
+          title: "Checked In Successfully!",
+          description: `Welcome ${child?.full_name || 'Child'}. Logged in at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
       } else if (domain === 'sadza-stats') {
@@ -133,13 +194,37 @@ export default function Index() {
           throw new Error('No active check-in found');
         }
 
-        const { data } = await checkOutWorkshopGuest(activeCheckIn.id);
+        const { data, error } = await checkOutWorkshopGuest(activeCheckIn.id);
 
         if (error) throw error;
 
         toast({
           title: "Workshop Check-out Successful!",
           description: `Goodbye ${activeCheckIn.workshop_guests?.full_name || 'Workshop Guest'}. Logged out at ${new Date().toLocaleTimeString()}`,
+          variant: "default",
+        });
+      } else if (domain === 'children') {
+        // Find the active child check-in
+        const { data: activeCheckIn } = await supabase
+          .from('child_check_ins')
+          .select('*, dzikwa_children(id, full_name)')
+          .eq('child_id', personId)
+          .is('check_out_time', null)
+          .order('check_in_time', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!activeCheckIn) {
+          throw new Error('No active check-in found');
+        }
+
+        const { data, error } = await checkOutChild(activeCheckIn.id);
+
+        if (error) throw error;
+
+        toast({
+          title: "Checked Out Successfully!",
+          description: `Goodbye ${activeCheckIn.dzikwa_children?.full_name || 'Child'}. Logged out at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
       }
@@ -177,6 +262,8 @@ export default function Index() {
             isLoading={isLoading}
           />
 
+          <FloatingAddButton onClick={handleAddButtonClick} />
+
           <div className="mt-6 sm:mt-8 text-center px-4">
             <p className="text-xs sm:text-sm text-muted-foreground">
               View attendance records on{" "}
@@ -186,11 +273,33 @@ export default function Index() {
               page.
             </p>
             <p className="text-xs text-muted-foreground mt-2 opacity-50">
-              
+
             </p>
           </div>
         </div>
       </div>
+
+      {/* Domain Selector Modal */}
+      <DomainSelectorModal
+        open={showDomainSelector}
+        onOpenChange={setShowDomainSelector}
+        onSelectDomain={handleDomainSelect}
+      />
+
+      {/* Dynamic Form Modal */}
+      <Dialog open={!!selectedDomain} onOpenChange={(open) => !open && handleCloseForm()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New {selectedDomain === 'sadza-stats' ? 'Sadza Recipient' : selectedDomain?.charAt(0).toUpperCase() + selectedDomain?.slice(1)}</DialogTitle>
+          </DialogHeader>
+          {selectedDomain && (
+            <DynamicDomainForm
+              selectedDomain={selectedDomain}
+              onClose={handleCloseForm}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
