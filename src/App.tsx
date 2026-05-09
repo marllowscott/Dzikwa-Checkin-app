@@ -52,7 +52,7 @@ const AdminRouteGuard = ({ children }: { children: React.ReactNode }) => {
   });
 
   // List of admin routes that should be protected
-  const adminRoutes = ['/admin-dashboard', '/stored-records', '/logs', '/guest-signup', '/workshop', '/guest-dashboard', '/children'];
+  const adminRoutes = ['/admin-dashboard', '/stored-records', '/logs', '/guest-signup', '/workshop', '/guest-dashboard', '/children', '/sadza-stats'];
 
   // Only redirect to login if accessing admin routes without authentication
   if (adminRoutes.includes(location.pathname) && !isAdmin) {
