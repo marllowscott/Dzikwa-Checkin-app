@@ -12,7 +12,7 @@ interface Person {
   id: string;
   full_name: string;
   is_active: boolean;
-  domain: 'employee' | 'guest' | 'child' | 'workshop';
+  domain: 'employee' | 'guest' | 'workshop' | 'sadza-stats';
   domainLabel: string;
 }
 
@@ -63,7 +63,7 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
       // Filter to only show active people
       const activeResults = (results || []).filter((r: Person) => r.is_active);
 
-      setSuggestions(activeResults);
+      setSuggestions(activeResults as Person[]);
       setShowSuggestions(true);
     } catch (error) {
       console.error('Search error:', error);
@@ -156,8 +156,10 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
         return 'default';
       case 'guest':
         return 'secondary';
-      case 'child':
+      case 'workshop':
         return 'outline';
+      case 'sadza-stats':
+        return 'destructive';
       default:
         return 'default';
     }
@@ -182,7 +184,7 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
               <Input
                 id="personSearch"
                 type="text"
-                placeholder="Search employees, guests, or children..."
+                placeholder="Search employees, guests, workshop participants, or sadza recipients..."
                 value={searchQuery}
                 onChange={(e) => handleSearch(e.target.value)}
                 onKeyPress={handleKeyPress}

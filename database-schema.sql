@@ -63,8 +63,6 @@ CREATE TABLE saved_logs (
   month TEXT NOT NULL,
   total_records INTEGER NOT NULL,
   log_data JSONB NOT NULL,
-  json_content TEXT NOT NULL,
-  csv_content TEXT NOT NULL,
   summary_content TEXT NOT NULL,
   saved_at TIMESTAMPTZ DEFAULT NOW(),
   saved_by TEXT DEFAULT 'admin'

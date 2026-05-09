@@ -8,8 +8,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase, SavedLog } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Download, FileText, Calendar, Archive, Edit, Trash2, Eye, Search, X, Save, Home } from "lucide-react";
+import { Loader2, Download, FileText, Calendar, Archive, Edit, Trash2, Eye, Search, X, Save, Home, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
+import jsPDF from 'jspdf';
+import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/dist/style.css';
 
 interface MonthlyLogs {
   month: string;
@@ -22,12 +27,14 @@ export default function StoredRecords() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingLog, setEditingLog] = useState<SavedLog | null>(null);
-  const [viewingLog, setViewingLog] = useState<{ log: SavedLog; type: 'json' | 'csv' | 'summary' } | null>(null);
+  const [viewingLog, setViewingLog] = useState<{ log: SavedLog; type: 'summary' } | null>(null);
   const [editForm, setEditForm] = useState({
     date: "",
     month: "",
     summary_content: ""
   });
+  const [exportDialog, setExportDialog] = useState<{ open: boolean; type: 'excel' | 'word' | 'pdf' | null }>({ open: false, type: null });
+  const [selectedRange, setSelectedRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -72,7 +79,16 @@ export default function StoredRecords() {
         }
       } else {
         console.log('✅ Successfully loaded saved logs:', logs?.length || 0, 'records');
-        setSavedLogs(logs || []);
+
+        // Clean up any existing records with invalid data
+        const cleanedLogs = (logs || []).map(log => ({
+          ...log,
+          date: log.date && !isNaN(new Date(log.date).getTime()) ? log.date : null,
+          month: log.month && log.month.includes('-') && !isNaN(new Date(log.month + '-01').getTime()) ? log.month : null,
+          saved_at: log.saved_at && !isNaN(new Date(log.saved_at).getTime()) ? log.saved_at : null
+        }));
+
+        setSavedLogs(cleanedLogs);
       }
     } catch (error: any) {
       console.error('💥 Unexpected error loading saved logs:', error);
@@ -87,12 +103,34 @@ export default function StoredRecords() {
   };
 
   const monthlyData = savedLogs.reduce((acc, log) => {
+    // Skip invalid month entries entirely
+    if (!log.month || !log.month.includes('-')) {
+      return acc;
+    }
+
     const year = log.month.split('-')[0];
+    const parsedYear = parseInt(year);
+
+    // Skip if year is invalid
+    if (isNaN(parsedYear)) {
+      return acc;
+    }
+
     const key = `${year}-${log.month}`;
     if (!acc[key]) {
+      // Validate month date creation
+      const monthDate = !isNaN(new Date(log.month + '-01').getTime())
+        ? new Date(log.month + '-01').toLocaleDateString('en-US', { month: 'long' })
+        : 'Invalid Month';
+
+      // Skip invalid months entirely
+      if (monthDate === 'Invalid Month') {
+        return acc;
+      }
+
       acc[key] = {
-        month: new Date(log.month + '-01').toLocaleDateString('en-US', { month: 'long' }),
-        year: parseInt(year),
+        month: monthDate,
+        year: parsedYear,
         logs: []
       };
     }
@@ -108,22 +146,28 @@ export default function StoredRecords() {
       )
     )
     .sort((a, b) => {
-      if (a.year !== b.year) return b.year - a.year;
+      if (a.year !== b.year) return a.year - b.year;
       const months = ['January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December'];
-      return months.indexOf(b.month) - months.indexOf(a.month);
+      return months.indexOf(a.month) - months.indexOf(b.month);
     });
 
-  const downloadContent = (content: string, filename: string, mimeType: string) => {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const handleBackToMain = () => {
+    navigate("/");
+    toast({
+      title: "Navigation",
+      description: "Returning to main check-in interface.",
+    });
+  };
+
+  // Edit and Delete functions
+  const openEditDialog = (log: SavedLog) => {
+    setEditingLog(log);
+    setEditForm({
+      date: log.date,
+      month: log.month,
+      summary_content: log.summary_content || ''
+    });
   };
 
   const handleEdit = async () => {
@@ -143,23 +187,24 @@ export default function StoredRecords() {
 
       toast({
         title: "Success",
-        description: "Record updated successfully",
+        description: "Record updated successfully.",
       });
 
-      loadSavedLogs();
       setEditingLog(null);
-    } catch (error) {
-      console.error('Error updating record:', error);
+      loadSavedLogs();
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to update record",
+        description: `Failed to update record: ${error.message}`,
         variant: "destructive",
       });
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this stored record? This action cannot be undone.')) return;
+    if (!confirm("Are you sure you want to delete this record? This action cannot be undone.")) {
+      return;
+    }
 
     try {
       const { error } = await supabase
@@ -171,39 +216,225 @@ export default function StoredRecords() {
 
       toast({
         title: "Success",
-        description: "Record deleted successfully",
+        description: "Record deleted successfully.",
       });
 
       loadSavedLogs();
-    } catch (error) {
-      console.error('Error deleting record:', error);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to delete record",
+        description: `Failed to delete record: ${error.message}`,
         variant: "destructive",
       });
     }
   };
 
-  const openViewDialog = (log: SavedLog, type: 'json' | 'csv' | 'summary') => {
-    setViewingLog({ log, type });
+  // Download content utility function
+  const downloadContent = (content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  const openEditDialog = (log: SavedLog) => {
-    setEditingLog(log);
-    setEditForm({
-      date: log.date,
-      month: log.month,
-      summary_content: log.summary_content
-    });
+  // Export functions
+  const exportToExcel = (log: SavedLog) => {
+    setExportDialog({ open: true, type: 'excel' });
   };
 
-  const handleBackToMain = () => {
-    navigate("/");
-    toast({
-      title: "Navigation",
-      description: "Returning to main check-in interface.",
-    });
+  const exportToWord = (log: SavedLog) => {
+    setExportDialog({ open: true, type: 'word' });
+  };
+
+  const exportToPDF = (log: SavedLog) => {
+    setExportDialog({ open: true, type: 'pdf' });
+  };
+
+  const handleExportWithDateRange = async () => {
+    if (!selectedRange.from || !selectedRange.to) {
+      toast({
+        title: "Error",
+        description: "Please select a date range",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const startDate = selectedRange.from.toISOString().split('T')[0];
+    const endDate = selectedRange.to.toISOString().split('T')[0];
+
+    try {
+      // Get all logs within the date range
+      const { data: logsInRange, error } = await supabase
+        .from('saved_logs')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true });
+
+      if (error) throw error;
+
+      if (!logsInRange || logsInRange.length === 0) {
+        toast({
+          title: "No Records",
+          description: "No records found in the selected date range",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Combine all data from the selected logs
+      const allRecords = [];
+      for (const log of logsInRange) {
+        try {
+          const logData = typeof log.log_data === 'string' ? JSON.parse(log.log_data) : log.log_data;
+          if (Array.isArray(logData)) {
+            allRecords.push(...logData);
+          } else {
+            console.warn('Invalid log_data format for log:', log.id);
+          }
+        } catch (error) {
+          console.error('Failed to parse log_data for log:', log.id, error);
+        }
+      }
+
+      // Export based on selected type
+      if (exportDialog.type === 'excel') {
+        const ws = XLSX.utils.json_to_sheet(allRecords.map((record: any) => ({
+          'Full Name': record.userName || record.full_name || 'N/A',
+          'Check In Time': (record.checkInTime && !isNaN(new Date(record.checkInTime).getTime())) ? record.checkInTime : (record.check_in_time && !isNaN(new Date(record.check_in_time).getTime())) ? record.check_in_time : 'N/A',
+          'Check Out Time': (record.checkOutTime && !isNaN(new Date(record.checkOutTime).getTime())) ? record.checkOutTime : (record.check_out_time && !isNaN(new Date(record.check_out_time).getTime())) ? record.check_out_time : 'Not checked out',
+          'Date': (record.date && !isNaN(new Date(record.date).getTime())) ? record.date : 'N/A'
+        })));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "CheckInRecords");
+        XLSX.writeFile(wb, `CheckIn_Records_${startDate}_to_${endDate}.xlsx`);
+      } else if (exportDialog.type === 'word') {
+        const wordContent = `
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <title>Check-In Records ${startDate} to ${endDate}</title>
+              <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
+                table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; font-weight: bold; }
+              </style>
+            </head>
+            <body>
+              <h1>Check-In Records: ${startDate} to ${endDate}</h1>
+              <p><strong>Total Records:</strong> ${allRecords.length}</p>
+              <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Full Name</th>
+                    <th>Check In Time</th>
+                    <th>Check Out Time</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                   ${allRecords.map((record: any) => `
+                     <tr>
+                       <td>${record.userName || record.full_name || 'N/A'}</td>
+                       <td>${(record.checkInTime && !isNaN(new Date(record.checkInTime).getTime())) ? record.checkInTime : (record.check_in_time && !isNaN(new Date(record.check_in_time).getTime())) ? record.check_in_time : 'N/A'}</td>
+                       <td>${(record.checkOutTime && !isNaN(new Date(record.checkOutTime).getTime())) ? record.checkOutTime : (record.check_out_time && !isNaN(new Date(record.check_out_time).getTime())) ? record.check_out_time : 'Not checked out'}</td>
+                       <td>${(record.date && !isNaN(new Date(record.date).getTime())) ? record.date : 'N/A'}</td>
+                     </tr>
+                   `).join('')}
+                </tbody>
+              </table>
+            </body>
+          </html>
+        `;
+
+        const blob = new Blob([wordContent], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `CheckIn_Records_${startDate}_to_${endDate}.doc`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else if (exportDialog.type === 'pdf') {
+        const doc = new jsPDF();
+
+        // Title
+        doc.setFontSize(18);
+        doc.text(`Check-In Records: ${startDate} to ${endDate}`, 20, 20);
+
+        // Summary info
+        doc.setFontSize(12);
+        doc.text(`Total Records: ${allRecords.length}`, 20, 35);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 45);
+
+        // Table headers
+        doc.setFontSize(10);
+        let y = 60;
+        doc.text('Name', 20, y);
+        doc.text('Check In', 70, y);
+        doc.text('Check Out', 120, y);
+        doc.text('Date', 170, y);
+
+        // Draw line under headers
+        doc.line(20, y + 2, 200, y + 2);
+
+        y += 10;
+
+        // Table data
+        allRecords.forEach((record: any) => {
+          if (y > 270) {
+            doc.addPage();
+            y = 20;
+            doc.text('Name', 20, y);
+            doc.text('Check In', 70, y);
+            doc.text('Check Out', 120, y);
+            doc.text('Date', 170, y);
+            doc.line(20, y + 2, 200, y + 2);
+            y += 10;
+          }
+
+          const name = (record.userName || record.full_name || 'N/A').substring(0, 20);
+          const checkIn = ((record.checkInTime && !isNaN(new Date(record.checkInTime).getTime())) ? record.checkInTime : (record.check_in_time && !isNaN(new Date(record.check_in_time).getTime())) ? record.check_in_time : 'N/A').substring(0, 20);
+          const checkOut = ((record.checkOutTime && !isNaN(new Date(record.checkOutTime).getTime())) ? record.checkOutTime : (record.check_out_time && !isNaN(new Date(record.check_out_time).getTime())) ? record.check_out_time : 'Not checked out').substring(0, 20);
+          const date = ((record.date && !isNaN(new Date(record.date).getTime())) ? record.date : 'N/A').substring(0, 15);
+
+          doc.text(name, 20, y);
+          doc.text(checkIn, 70, y);
+          doc.text(checkOut, 120, y);
+          doc.text(date, 170, y);
+          y += 8;
+        });
+
+        doc.save(`CheckIn_Records_${startDate}_to_${endDate}.pdf`);
+      }
+
+      toast({
+        title: "Export Successful",
+        description: `Exported ${allRecords.length} records from ${startDate} to ${endDate}`,
+      });
+
+      // Close dialog and reset
+      setExportDialog({ open: false, type: null });
+      setSelectedRange({ from: undefined, to: undefined });
+
+    } catch (error) {
+      console.error('Error exporting with date range:', error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export records. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (loading) {
@@ -230,19 +461,38 @@ export default function StoredRecords() {
         <div className="space-y-6">
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-                <Archive className="w-8 h-8 text-primary" />
-                Stored Records
-              </h1>
-              <p className="text-muted-foreground mt-1">
-                Access and manage archived daily check-in logs
-              </p>
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => navigate('/admin-dashboard')}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
+                  <Archive className="w-8 h-8 text-primary" />
+                  Stored Records
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  Access and manage archived daily check-in logs
+                </p>
+              </div>
             </div>
-            <Button variant="outline" onClick={handleBackToMain} className="w-full sm:w-auto">
-              <Home className="w-4 h-4 mr-2" />
-              Back to Main
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setExportDialog({ open: true, type: null })}
+                className="w-full sm:w-auto"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export with Date Range
+              </Button>
+              <Button variant="outline" onClick={handleBackToMain} className="w-full sm:w-auto">
+                <Home className="w-4 h-4 mr-2" />
+                Back to Main
+              </Button>
+            </div>
           </div>
 
           {/* Search */}
@@ -290,73 +540,32 @@ export default function StoredRecords() {
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-lg font-semibold">
-                                {log.date} Daily Logs
-                              </h3>
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg font-bold text-primary">
+                                  {log.date && !isNaN(new Date(log.date).getTime())
+                                    ? new Date(log.date).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })
+                                    : 'Invalid Date'}
+                                </span>
+                                <span className="text-lg font-semibold text-muted-foreground">
+                                  {log.date && !isNaN(new Date(log.date).getTime())
+                                    ? new Date(log.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                                    : 'Invalid Date'}
+                                </span>
+                              </div>
                               <span className="text-sm bg-primary/10 text-primary px-2 py-1 rounded-[7px]">
                                 {log.total_records} records
                               </span>
                             </div>
                             <p className="text-sm text-muted-foreground">
-                              Saved on {new Date(log.saved_at).toLocaleDateString()} at {new Date(log.saved_at).toLocaleTimeString()}
+                              Saved on {log.saved_at && !isNaN(new Date(log.saved_at).getTime())
+                                ? new Date(log.saved_at).toLocaleDateString()
+                                : 'Invalid Date'} at {log.saved_at && !isNaN(new Date(log.saved_at).getTime())
+                                  ? new Date(log.saved_at).toLocaleTimeString()
+                                  : 'Invalid Time'}
                             </p>
                           </div>
 
                           <div className="flex gap-2 flex-wrap">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openViewDialog(log, 'json')}
-                              className="flex items-center gap-2"
-                            >
-                              <Eye className="w-4 h-4" />
-                              View JSON
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openViewDialog(log, 'csv')}
-                              className="flex items-center gap-2"
-                            >
-                              <Eye className="w-4 h-4" />
-                              View CSV
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openViewDialog(log, 'summary')}
-                              className="flex items-center gap-2"
-                            >
-                              <Eye className="w-4 h-4" />
-                              View Summary
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => downloadContent(log.json_content, `${log.date}_DailyLogs.json`, 'application/json')}
-                              className="flex items-center gap-2"
-                            >
-                              <Download className="w-4 h-4" />
-                              JSON
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => downloadContent(log.csv_content, `${log.date}_DailyLogs.csv`, 'text/csv')}
-                              className="flex items-center gap-2"
-                            >
-                              <Download className="w-4 h-4" />
-                              CSV
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => downloadContent(log.summary_content, `${log.date}_DailyLogs_Summary.txt`, 'text/plain')}
-                              className="flex items-center gap-2"
-                            >
-                              <Download className="w-4 h-4" />
-                              Summary
-                            </Button>
                             <Button
                               variant="outline"
                               size="sm"
@@ -393,7 +602,7 @@ export default function StoredRecords() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
-              {viewingLog && `${viewingLog.log.date} - ${viewingLog.type.toUpperCase()} View`}
+              {viewingLog && `${viewingLog.log.date} - Summary View`}
             </DialogTitle>
           </DialogHeader>
           {viewingLog && (
@@ -403,37 +612,22 @@ export default function StoredRecords() {
                 <span>Saved on {new Date(viewingLog.log.saved_at).toLocaleDateString()}</span>
               </div>
               <div className="border rounded-lg p-4 overflow-auto max-h-[60vh] bg-muted/30">
-                {viewingLog.type === 'json' && (
-                  <pre className="text-xs font-mono whitespace-pre-wrap">
-                    {JSON.stringify(JSON.parse(viewingLog.log.json_content), null, 2)}
-                  </pre>
-                )}
-                {viewingLog.type === 'csv' && (
-                  <pre className="text-xs font-mono whitespace-pre-wrap">
-                    {viewingLog.log.csv_content}
-                  </pre>
-                )}
-                {viewingLog.type === 'summary' && (
-                  <pre className="text-sm whitespace-pre-wrap">
-                    {viewingLog.log.summary_content}
-                  </pre>
-                )}
+                <pre className="text-sm whitespace-pre-wrap">
+                  {viewingLog.log.summary_content}
+                </pre>
               </div>
               <div className="flex gap-2 justify-end">
                 <Button
                   variant="outline"
                   onClick={() => {
-                    const content = viewingLog.type === 'json' ? viewingLog.log.json_content :
-                      viewingLog.type === 'csv' ? viewingLog.log.csv_content :
-                        viewingLog.log.summary_content;
-                    const filename = `${viewingLog.log.date}_DailyLogs_${viewingLog.type}.${viewingLog.type === 'summary' ? 'txt' : viewingLog.type}`;
-                    const mimeType = viewingLog.type === 'json' ? 'application/json' :
-                      viewingLog.type === 'csv' ? 'text/csv' : 'text/plain';
+                    const content = viewingLog.log.summary_content;
+                    const filename = `${viewingLog.log.date}_DailyLogs_summary.txt`;
+                    const mimeType = 'text/plain';
                     downloadContent(content, filename, mimeType);
                   }}
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  Download {viewingLog.type.toUpperCase()}
+                  Download Summary
                 </Button>
                 <Button variant="outline" onClick={() => setViewingLog(null)}>
                   Close
@@ -441,6 +635,81 @@ export default function StoredRecords() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Date Range Dialog */}
+      <Dialog open={exportDialog.open} onOpenChange={(open) => !open && setExportDialog({ open: false, type: null })}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="w-5 h-5" />
+              Export {exportDialog.type?.toUpperCase()} - Select Date Range
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex justify-center">
+              <DayPicker
+                mode="range"
+                selected={selectedRange}
+                onSelect={(range) => setSelectedRange({ from: range?.from, to: range?.to })}
+                numberOfMonths={2}
+                className="rounded-md border"
+                styles={{
+                  head: { color: 'var(--foreground)' },
+                  caption: { color: 'var(--foreground)' },
+                  nav_button_previous: { color: 'var(--foreground)' },
+                  nav_button_next: { color: 'var(--foreground)' },
+                  day: { color: 'var(--foreground)' },
+                  selected: {
+                    backgroundColor: 'var(--primary)',
+                    color: 'var(--primary-foreground)',
+                    fontWeight: 'bold'
+                  },
+                  range_middle: {
+                    backgroundColor: 'var(--primary)',
+                    color: 'var(--primary-foreground)'
+                  },
+                  range_start: {
+                    backgroundColor: 'var(--primary)',
+                    color: 'var(--primary-foreground)',
+                    fontWeight: 'bold'
+                  },
+                  range_end: {
+                    backgroundColor: 'var(--primary)',
+                    color: 'var(--primary-foreground)',
+                    fontWeight: 'bold'
+                  },
+                  today: {
+                    backgroundColor: 'var(--muted)',
+                    color: 'var(--foreground)'
+                  }
+                } as any}
+              />
+            </div>
+
+            {selectedRange.from && selectedRange.to && (
+              <div className="text-center text-sm text-muted-foreground">
+                Selected: {selectedRange.from.toLocaleDateString()} - {selectedRange.to.toLocaleDateString()}
+              </div>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => {
+                setExportDialog({ open: false, type: null });
+                setSelectedRange({ from: undefined, to: undefined });
+              }}>
+                Cancel
+              </Button>``
+              <Button
+                onClick={handleExportWithDateRange}
+                disabled={!selectedRange.from || !selectedRange.to}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export {exportDialog.type?.toUpperCase()}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -495,6 +764,6 @@ export default function StoredRecords() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

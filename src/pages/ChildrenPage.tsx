@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
-import { Plus, Edit, Trash2, Users, ArrowLeft, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Edit, Trash2, Users, ArrowLeft, Loader2 } from "lucide-react";
 
 interface Child {
   id: string;
@@ -22,23 +22,10 @@ interface Child {
   created_at: string;
 }
 
-interface ChildCheckIn {
-  id: string;
-  child_id: string;
-  check_in_time: string;
-  check_out_time: string | null;
-  dzikwa_children: {
-    full_name: string;
-    parent_name: string;
-    grade: string;
-  };
-}
 
 export default function ChildrenPage() {
   const [children, setChildren] = useState<Child[]>([]);
-  const [childCheckIns, setChildCheckIns] = useState<ChildCheckIn[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingCheckIns, setLoadingCheckIns] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingChild, setEditingChild] = useState<Child | null>(null);
   const { toast } = useToast();
@@ -72,24 +59,6 @@ export default function ChildrenPage() {
     }
   };
 
-  // Fetch active check-ins
-  const fetchChildCheckIns = async () => {
-    setLoadingCheckIns(true);
-    try {
-      const { data, error } = await supabase
-        .from('child_check_ins')
-        .select('*, dzikwa_children(full_name, parent_name, grade)')
-        .is('check_out_time', null)
-        .order('check_in_time', { ascending: false });
-
-      if (error) throw error;
-      setChildCheckIns(data || []);
-    } catch (error) {
-      console.error('Error fetching child check-ins:', error);
-    } finally {
-      setLoadingCheckIns(false);
-    }
-  };
 
   // Add new child
   const handleAddChild = async () => {
@@ -196,35 +165,9 @@ export default function ChildrenPage() {
     }
   };
 
-  // Check out child
-  const handleChildCheckOut = async (checkInId: string, childName: string) => {
-    try {
-      const { error } = await supabase
-        .from('child_check_ins')
-        .update({ check_out_time: new Date().toISOString() })
-        .eq('id', checkInId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: `${childName} has been checked out`,
-      });
-
-      fetchChildCheckIns();
-    } catch (error) {
-      console.error('Error checking out child:', error);
-      toast({
-        title: "Error",
-        description: "Failed to check out child",
-        variant: "destructive",
-      });
-    }
-  };
 
   useEffect(() => {
     fetchChildren();
-    fetchChildCheckIns();
   }, []);
 
   if (loading) {
@@ -262,65 +205,12 @@ export default function ChildrenPage() {
                   Children Management
                 </h1>
                 <p className="text-sm sm:text-base text-muted-foreground mt-1">
-                  Manage children check-ins and check-outs
+                  Manage Dzikwa trust children information and details
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Active Check-ins */}
-          <Card>
-            <div className="p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-lg font-heading flex items-center gap-2">
-                    <Users className="w-5 h-5 text-success" />
-                    Active Check-ins ({childCheckIns.length})
-                  </h3>
-                  <p className="text-sm text-muted-foreground">Children currently checked in</p>
-                </div>
-                <Button
-                  onClick={fetchChildCheckIns}
-                  variant="outline"
-                  size="sm"
-                  disabled={loadingCheckIns}
-                >
-                  {loadingCheckIns ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  Refresh
-                </Button>
-              </div>
-
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {childCheckIns.map((checkIn) => (
-                  <div key={checkIn.id} className="flex items-center justify-between p-4 border rounded-[7px] hover:bg-muted/50 transition-colors">
-                    <div className="flex-1">
-                      <div className="font-medium">{checkIn.dzikwa_children.full_name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Parent: {checkIn.dzikwa_children.parent_name} • Grade: {checkIn.dzikwa_children.grade || 'Not specified'}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Checked in: {new Date(checkIn.check_in_time).toLocaleTimeString()}
-                      </div>
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleChildCheckOut(checkIn.id, checkIn.dzikwa_children.full_name)}
-                      className="hover:bg-red-600 transition-colors"
-                    >
-                      <XCircle className="w-4 h-4 mr-1" />
-                      Check Out
-                    </Button>
-                  </div>
-                ))}
-                {childCheckIns.length === 0 && (
-                  <div className="text-center text-muted-foreground py-8">
-                    No children currently checked in.
-                  </div>
-                )}
-              </div>
-            </div>
-          </Card>
 
           {/* Children Management */}
           <Card>
@@ -401,7 +291,7 @@ export default function ChildrenPage() {
               <DialogHeader>
                 <DialogTitle>Add New Child</DialogTitle>
                 <DialogDescription>
-                  Add a new child to the check-in system
+                  Add a new child to the Dzikwa trust children registry
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">

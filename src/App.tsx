@@ -16,7 +16,10 @@ const StoredRecords = lazy(() => import("./pages/StoredRecords"));
 const AnimatedLogoShowcase = lazy(() => import("./pages/AnimatedLogoShowcase"));
 const WorkshopPage = lazy(() => import("./pages/WorkshopPage"));
 const GuestDashboard = lazy(() => import("./pages/GuestDashboard"));
+const GuestStoredRecords = lazy(() => import("./pages/GuestStoredRecords"));
+const WorkshopStoredRecords = lazy(() => import("./pages/WorkshopStoredRecords"));
 const ChildrenPage = lazy(() => import("./pages/ChildrenPage"));
+const SadzaStatsPage = lazy(() => import("./pages/SadzaStatsPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Loading component
@@ -48,8 +51,11 @@ const AdminRouteGuard = ({ children }: { children: React.ReactNode }) => {
     shouldRedirect: location.pathname === '/admin-dashboard' && !isAdmin
   });
 
-  // Only allow access to admin-dashboard if authenticated
-  if (location.pathname === '/admin-dashboard' && !isAdmin) {
+  // List of admin routes that should be protected
+  const adminRoutes = ['/admin-dashboard', '/stored-records', '/logs', '/guest-signup', '/workshop', '/guest-dashboard', '/children'];
+
+  // Only redirect to login if accessing admin routes without authentication
+  if (adminRoutes.includes(location.pathname) && !isAdmin) {
     console.log('🚫 Redirecting to login - not authenticated');
     return <Navigate to="/admin-login" replace />;
   }
@@ -167,9 +173,24 @@ const App = () => (
                   <GuestDashboard />
                 </Suspense>
               } />
+              <Route path="/guest-stored-records" element={
+                <Suspense fallback={<PageLoader />}>
+                  <GuestStoredRecords />
+                </Suspense>
+              } />
+              <Route path="/workshop-stored-records" element={
+                <Suspense fallback={<PageLoader />}>
+                  <WorkshopStoredRecords />
+                </Suspense>
+              } />
               <Route path="/children" element={
                 <Suspense fallback={<PageLoader />}>
                   <ChildrenPage />
+                </Suspense>
+              } />
+              <Route path="/sadza-stats" element={
+                <Suspense fallback={<PageLoader />}>
+                  <SadzaStatsPage />
                 </Suspense>
               } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

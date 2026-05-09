@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { ProfessionalButton } from "@/components/ui/button-variants";
-import { Home, BarChart3, LayoutDashboard, Archive, Menu, X } from "lucide-react";
+import { Home, BarChart3, LayoutDashboard, Archive, Menu, X, Utensils } from "lucide-react";
 import { AdminIcon } from "@/components/ui/AdminIcon";
 import { CheckInIcon } from "@/components/ui/CheckInIcon";
 import { ViewLogsIcon } from "@/components/ui/ViewLogsIcon";

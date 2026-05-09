@@ -23,7 +23,7 @@ interface MonthlyData {
   days: { [day: string]: CheckInRecord[] };
 }
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Users, TrendingUp, Loader2, Download, Edit, Trash2, Plus, Filter, LogOut, FileText, Upload, Eye, File, Save, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, Home, RefreshCw, Video, Music } from "lucide-react";
+import { Calendar, Users, TrendingUp, Loader2, Download, Edit, Trash2, Plus, Filter, LogOut, FileText, Upload, Eye, File, Save, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, Home, RefreshCw, Video, Music, Utensils } from "lucide-react";
 import { CheckInIcon } from "@/components/ui/CheckInIcon";
 import { AdminIcon } from "@/components/ui/AdminIcon";
 import { LogoutIcon } from "@/components/ui/LogoutIcon";
@@ -1254,6 +1254,14 @@ export default function AdminDashboard() {
               <TabsTrigger value="dashboard" className="transition-all duration-200 text-xs sm:text-sm">Dashboard</TabsTrigger>
               <TabsTrigger value="records" className="transition-all duration-200 text-xs sm:text-sm">Records</TabsTrigger>
               <TabsTrigger value="employees" className="transition-all duration-200 text-xs sm:text-sm">Employees</TabsTrigger>
+              <TabsTrigger
+                value="sadza-stats"
+                className="transition-all duration-200 text-xs sm:text-sm"
+                onClick={() => navigate('/sadza-stats')}
+              >
+                <Utensils className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                Sadza Stats
+              </TabsTrigger>
               <TabsTrigger
                 value="guests"
                 className="transition-all duration-200 text-xs sm:text-sm"

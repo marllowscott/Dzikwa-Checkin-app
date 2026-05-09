@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Navigation } from "@/components/Navigation";
 import { CheckInForm } from "@/components/CheckInForm";
 import { useToast } from "@/hooks/use-toast";
 import { createCheckIn, createCheckOut, checkInGuest, checkOutGuest, checkInChild, checkOutChild, supabase } from "@/lib/supabase";
+import { checkInWorkshopGuest, checkOutWorkshopGuest } from "@/lib/workshop";
 
 export default function Index() {
   const [isLoading, setIsLoading] = useState(false);
@@ -39,33 +40,16 @@ export default function Index() {
           description: `Welcome ${guest?.full_name || 'Guest'}. Logged in at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
-      } else if (domain === 'child') {
-        // Get child details first
-        const { data: child } = await supabase
-          .from('dzikwa_children')
-          .select('full_name')
-          .eq('id', personId)
-          .single();
-
-        const { data, error } = await checkInChild(personId);
-
-        if (error) throw error;
-
-        toast({
-          title: "Checked In Successfully!",
-          description: `Welcome ${child?.full_name || 'Child'}. Logged in at ${new Date().toLocaleTimeString()}`,
-          variant: "default",
-        });
       } else if (domain === 'workshop') {
-        // Workshop guests use the same logic as regular guests
-        // Get guest details first
+        // Workshop guests use their own system
+        // Get workshop guest details first
         const { data: guest } = await supabase
-          .from('guests')
+          .from('workshop_guests')
           .select('full_name')
           .eq('id', personId)
           .single();
 
-        const { data, error } = await checkInGuest(personId, 'Workshop Check-in');
+        const { data, error } = await checkInWorkshopGuest(personId, 'Workshop Session', 'Active Workshop');
 
         if (error) throw error;
 
@@ -74,6 +58,14 @@ export default function Index() {
           description: `Welcome ${guest?.full_name || 'Workshop Guest'}. Logged in at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
+      } else if (domain === 'sadza-stats') {
+        // Sadza recipients are for statistics, not check-in/out
+        toast({
+          title: "Information",
+          description: "Sadza recipients are for statistics tracking only, not check-in/out.",
+          variant: "default",
+        });
+        return;
       }
     } catch (error) {
       console.error('Check-in error:', error);
@@ -105,7 +97,7 @@ export default function Index() {
         // Find the active guest check-in
         const { data: activeCheckIn } = await supabase
           .from('guest_check_ins')
-          .select('*, guests!full_name(*)')
+          .select('*, guests(id, full_name)')
           .eq('guest_id', personId)
           .is('check_out_time', null)
           .order('check_in_time', { ascending: false })
@@ -125,37 +117,13 @@ export default function Index() {
           description: `Goodbye ${activeCheckIn.guests?.full_name || 'Guest'}. Logged out at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
-      } else if (domain === 'child') {
-        // Find the active child check-in
-        const { data: activeCheckIn } = await supabase
-          .from('child_check_ins')
-          .select('*, dzikwa_children!full_name(*)')
-          .eq('child_id', personId)
-          .is('check_out_time', null)
-          .order('check_in_time', { ascending: false })
-          .limit(1)
-          .single();
-
-        if (!activeCheckIn) {
-          throw new Error('No active check-in found');
-        }
-
-        const { data, error } = await checkOutChild(activeCheckIn.id);
-
-        if (error) throw error;
-
-        toast({
-          title: "Checked Out Successfully!",
-          description: `Goodbye ${activeCheckIn.dzikwa_children?.full_name || 'Child'}. Logged out at ${new Date().toLocaleTimeString()}`,
-          variant: "default",
-        });
       } else if (domain === 'workshop') {
-        // Workshop guests use the same check-out logic as regular guests
-        // Find the active guest check-in
+        // Workshop guests use their own check-out system
+        // Find the active workshop check-in
         const { data: activeCheckIn } = await supabase
-          .from('guest_check_ins')
-          .select('*, guests!full_name(*)')
-          .eq('guest_id', personId)
+          .from('workshop_check_ins')
+          .select('*, workshop_guests(id, full_name)')
+          .eq('workshop_guest_id', personId)
           .is('check_out_time', null)
           .order('check_in_time', { ascending: false })
           .limit(1)
@@ -165,13 +133,13 @@ export default function Index() {
           throw new Error('No active check-in found');
         }
 
-        const { data, error } = await checkOutGuest(activeCheckIn.id);
+        const { data } = await checkOutWorkshopGuest(activeCheckIn.id);
 
         if (error) throw error;
 
         toast({
           title: "Workshop Check-out Successful!",
-          description: `Goodbye ${activeCheckIn.guests?.full_name || 'Workshop Guest'}. Logged out at ${new Date().toLocaleTimeString()}`,
+          description: `Goodbye ${activeCheckIn.workshop_guests?.full_name || 'Workshop Guest'}. Logged out at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
       }
@@ -218,7 +186,7 @@ export default function Index() {
               page.
             </p>
             <p className="text-xs text-muted-foreground mt-2 opacity-50">
-              Admin access: Double-tap 'A' key
+              
             </p>
           </div>
         </div>

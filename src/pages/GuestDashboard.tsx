@@ -8,16 +8,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase, Guest, GuestCheckIn } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { Users, RefreshCw, Plus, Edit, Trash2, LogOut, ArrowLeft, Download, Search, FileSpreadsheet, FileText } from "lucide-react";
+import { Users, RefreshCw, Plus, Edit, Trash2, LogOut, ArrowLeft, Download, Search, FileSpreadsheet, FileText, Save } from "lucide-react";
 import * as XLSX from 'xlsx';
-import Papa from 'papaparse';
 import jsPDF from 'jspdf';
 
 export default function GuestDashboard() {
     const navigate = useNavigate();
     const { toast } = useToast();
+
+    // Helper function to get day of week
+    const getDayOfWeek = (dateString: string) => {
+        const date = new Date(dateString);
+        return isNaN(date.getTime()) ? 'Invalid' : date.toLocaleDateString('en-US', { weekday: 'short' });
+    };
 
     // State
     const [guests, setGuests] = useState<Guest[]>([]);
@@ -30,6 +37,11 @@ export default function GuestDashboard() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingGuest, setEditingGuest] = useState<Guest | null>(null);
+
+    // Export dialog state
+    const [showExportDialog, setShowExportDialog] = useState(false);
+    const [exportType, setExportType] = useState<'excel' | 'pdf' | 'word'>('excel');
+    const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined } | undefined>(undefined);
 
     // Form states
     const [newGuest, setNewGuest] = useState({
@@ -244,95 +256,219 @@ export default function GuestDashboard() {
         }
     };
 
-    // Export functions
-    const exportToExcel = () => {
-        const exportData = filteredGuests.map(guest => ({
-            'Full Name': guest.full_name,
-            'Email': guest.email || '',
-            'Phone': guest.phone || '',
-            'Company': guest.company || '',
-            'Purpose': guest.purpose || '',
-            'Status': guest.is_active ? 'Active' : 'Inactive',
-            'Created At': new Date(guest.created_at).toLocaleDateString()
-        }));
+    // Save today's guest logs
+    const saveTodaysGuestLogs = async () => {
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const todaysGuestCheckIns = guestCheckIns.filter(checkIn => {
+                const recordDate = new Date(checkIn.check_in_time);
+                return !isNaN(recordDate.getTime()) && recordDate.toISOString().split('T')[0] === today;
+            });
 
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Guests");
-        XLSX.writeFile(wb, `guests_export_${new Date().toISOString().split('T')[0]}.xlsx`);
-
-        toast({
-            title: "Success",
-            description: "Guest data exported to Excel"
-        });
-    };
-
-    const exportToCSV = () => {
-        const exportData = filteredGuests.map(guest => ({
-            full_name: guest.full_name,
-            email: guest.email || '',
-            phone: guest.phone || '',
-            company: guest.company || '',
-            purpose: guest.purpose || '',
-            is_active: guest.is_active ? 'Active' : 'Inactive',
-            created_at: guest.created_at
-        }));
-
-        const csv = Papa.unparse(exportData);
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `guests_export_${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
-
-        toast({
-            title: "Success",
-            description: "Guest data exported to CSV"
-        });
-    };
-
-    const exportToPDF = () => {
-        const doc = new jsPDF();
-
-        // Title
-        doc.setFontSize(18);
-        doc.text('Guest Management Report', 14, 22);
-        doc.setFontSize(10);
-        doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 30);
-
-        // Table headers
-        let yPos = 40;
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Name', 14, yPos);
-        doc.text('Email', 60, yPos);
-        doc.text('Phone', 100, yPos);
-        doc.text('Company', 140, yPos);
-        doc.text('Status', 180, yPos);
-
-        // Table data
-        doc.setFont('helvetica', 'normal');
-        yPos += 8;
-
-        filteredGuests.slice(0, 30).forEach((guest) => {
-            if (yPos > 270) {
-                doc.addPage();
-                yPos = 20;
+            if (todaysGuestCheckIns.length === 0) {
+                toast({
+                    title: "No Records",
+                    description: "No guest check-ins found for today",
+                    variant: "destructive",
+                });
+                return;
             }
-            doc.text(String(guest.full_name || '').substring(0, 20), 14, yPos);
-            doc.text(String(guest.email || '-').substring(0, 20), 60, yPos);
-            doc.text(String(guest.phone || '-').substring(0, 15), 100, yPos);
-            doc.text(String(guest.company || '-').substring(0, 20), 140, yPos);
-            doc.text(guest.is_active ? 'Active' : 'Inactive', 180, yPos);
-            yPos += 7;
-        });
 
-        doc.save(`guests_export_${new Date().toISOString().split('T')[0]}.pdf`);
+            const summary = `Total guest check-ins: ${todaysGuestCheckIns.length}\nChecked in: ${todaysGuestCheckIns.filter(c => !c.check_out_time).length}\nChecked out: ${todaysGuestCheckIns.filter(c => c.check_out_time).length}`;
 
-        toast({
-            title: "Success",
-            description: "Guest data exported to PDF"
-        });
+            // Validate and clean the data before sending
+            const cleanedRecords = todaysGuestCheckIns.map(checkIn => ({
+                id: checkIn.id,
+                guest_id: checkIn.guest_id,
+                check_in_time: checkIn.check_in_time || new Date().toISOString(),
+                check_out_time: checkIn.check_out_time || null,
+                purpose: checkIn.purpose || 'Unknown',
+                created_at: checkIn.created_at || new Date().toISOString(),
+                guests: checkIn.guests
+            }));
+
+            console.log('📝 Saving guest logs:', {
+                date: today,
+                totalRecords: cleanedRecords.length,
+                sampleRecord: cleanedRecords[0]
+            });
+
+            const { error } = await supabase
+                .from('saved_guest_logs')
+                .insert({
+                    date: today,
+                    month: new Date(today).toLocaleString('default', { month: 'long' }),
+                    total_records: cleanedRecords.length,
+                    log_data: cleanedRecords,
+                    json_content: JSON.stringify(cleanedRecords, null, 2),
+                    summary_content: summary
+                });
+
+            if (error) {
+                console.error(' Supabase error:', error);
+                console.error(' Error details:', JSON.stringify(error, null, 2));
+                console.error(' Error message:', error.message);
+                console.error(' Error code:', error.code);
+                console.error(' Error details:', error.details);
+                console.error(' Error hint:', error.hint);
+
+                toast({
+                    title: "Database Error",
+                    description: `Failed to save: ${error.message || JSON.stringify(error) || 'Unknown database error'}`,
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            toast({
+                title: "Success",
+                description: `Today's ${cleanedRecords.length} guest check-ins saved successfully`,
+            });
+
+            // Reset guest check-ins for fresh start tomorrow
+            const { error: resetError } = await supabase
+                .from('guest_check_ins')
+                .delete()
+                .in('id', cleanedRecords.map(record => record.id));
+
+            if (resetError) {
+                console.error('Error resetting guest check-ins:', resetError);
+                toast({
+                    title: "Warning",
+                    description: "Guest logs saved but failed to reset guest list for tomorrow",
+                    variant: "destructive",
+                });
+            } else {
+                console.log('✅ Guest check-ins reset for fresh start tomorrow');
+                toast({
+                    title: "Success",
+                    description: `Today's ${cleanedRecords.length} guest check-ins saved and guest list reset for tomorrow`,
+                });
+            }
+
+            fetchGuestCheckIns(); // Refresh the guest check-ins to show cleared list
+        } catch (error) {
+            console.error('💥 Unexpected error saving guest logs:', error);
+            toast({
+                title: "Error",
+                description: "Failed to save today's guest logs. Please try again.",
+                variant: "destructive",
+            });
+        }
+    };
+
+    // Advanced export with date range
+    const handleExportWithDateRange = async () => {
+        if (!dateRange.from || !dateRange.to) {
+            toast({
+                title: "Error",
+                description: "Please select a date range",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        try {
+            const { data: guestCheckIns, error } = await supabase
+                .from('guest_check_ins')
+                .select(`
+                    *,
+                    guests (full_name, email, phone, company)
+                `)
+                .gte('check_in_time', dateRange.from.toISOString())
+                .lte('check_in_time', dateRange.to.toISOString())
+                .order('check_in_time', { ascending: false });
+
+            if (error) throw error;
+
+            if (!guestCheckIns || guestCheckIns.length === 0) {
+                toast({
+                    title: "No Data",
+                    description: "No guest check-ins found in the selected date range",
+                    variant: "destructive"
+                });
+                return;
+            }
+
+            const exportData = guestCheckIns.map((checkIn: any) => ({
+                'Full Name': checkIn.guests?.full_name || 'Unknown',
+                'Email': checkIn.guests?.email || '',
+                'Phone': checkIn.guests?.phone || '',
+                'Company': checkIn.guests?.company || '',
+                'Purpose': checkIn.purpose || '',
+                'Check-in Time': new Date(checkIn.check_in_time).toLocaleString(),
+                'Check-out Time': checkIn.check_out_time ? new Date(checkIn.check_out_time).toLocaleString() : 'Not checked out',
+                'Day': getDayOfWeek(checkIn.check_in_time),
+                'Status': checkIn.check_out_time ? 'Checked Out' : 'Active'
+            }));
+
+            if (exportType === 'excel') {
+                const ws = XLSX.utils.json_to_sheet(exportData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "GuestCheckIns");
+                XLSX.writeFile(wb, `guest_checkins_${dateRange.from.toISOString().split('T')[0]}_to_${dateRange.to.toISOString().split('T')[0]}.xlsx`);
+            } else if (exportType === 'pdf') {
+                const doc = new jsPDF();
+                doc.setFontSize(18);
+                doc.text('Guest Check-in Report', 14, 22);
+                doc.setFontSize(12);
+                doc.text(`Date Range: ${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}`, 14, 32);
+                doc.text(`Total Check-ins: ${guestCheckIns.length}`, 14, 42);
+
+                let yPosition = 52;
+                exportData.forEach((item, index) => {
+                    if (yPosition > 250) {
+                        doc.addPage();
+                        yPosition = 20;
+                    }
+                    doc.text(`${index + 1}. ${item['Full Name']} - ${item['Check-in Time']} - ${item['Status']}`, 14, yPosition);
+                    yPosition += 8;
+                });
+
+                doc.save(`guest_checkins_${dateRange.from.toISOString().split('T')[0]}_to_${dateRange.to.toISOString().split('T')[0]}.pdf`);
+            } else if (exportType === 'word') {
+                let wordContent = `<html><head><title>Guest Check-in Report</title></head><body>`;
+                wordContent += `<h1>Guest Check-in Report</h1>`;
+                wordContent += `<p><strong>Date Range:</strong> ${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}</p>`;
+                wordContent += `<p><strong>Total Check-ins:</strong> ${guestCheckIns.length}</p>`;
+                wordContent += `<table border="1" style="border-collapse: collapse; width: 100%;">`;
+                wordContent += `<tr><th>Name</th><th>Company</th><th>Check-in Time</th><th>Check-out Time</th><th>Status</th></tr>`;
+
+                exportData.forEach(item => {
+                    wordContent += `<tr>`;
+                    wordContent += `<td>${item['Full Name']}</td>`;
+                    wordContent += `<td>${item['Company']}</td>`;
+                    wordContent += `<td>${item['Check-in Time']}</td>`;
+                    wordContent += `<td>${item['Check-out Time']}</td>`;
+                    wordContent += `<td>${item['Status']}</td>`;
+                    wordContent += `</tr>`;
+                });
+
+                wordContent += `</table></body></html>`;
+
+                const blob = new Blob([wordContent], { type: 'application/msword' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `guest_checkins_${dateRange.from.toISOString().split('T')[0]}_to_${dateRange.to.toISOString().split('T')[0]}.doc`;
+                link.click();
+            }
+
+            toast({
+                title: "Success",
+                description: `Guest check-ins exported successfully as ${exportType.toUpperCase()}`
+            });
+
+            setShowExportDialog(false);
+            setDateRange(undefined);
+
+        } catch (error: any) {
+            console.error('Error exporting guest check-ins:', error);
+            toast({
+                title: "Error",
+                description: error.message || "Failed to export guest check-ins",
+                variant: "destructive"
+            });
+        }
     };
 
     // Filter guests based on search
@@ -371,12 +507,21 @@ export default function GuestDashboard() {
                                 </p>
                             </div>
                         </div>
-                        <Button
-                            variant="outline"
-                            onClick={() => navigate('/admin-dashboard')}
-                        >
-                            Back to Admin
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                onClick={() => navigate('/guest-stored-records')}
+                            >
+                                <Save className="w-4 h-4 mr-2 text-primary" />
+                                Record Storage
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => navigate('/admin-dashboard')}
+                            >
+                                Back to Admin
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -412,10 +557,16 @@ export default function GuestDashboard() {
                                 <h3 className="text-lg font-heading">Currently Checked In Guests</h3>
                                 <p className="text-sm text-muted-foreground">Guests currently in the premises</p>
                             </div>
-                            <Button variant="outline" onClick={fetchGuestCheckIns} disabled={loadingCheckIns}>
-                                <RefreshCw className={`h-4 w-4 mr-2 ${loadingCheckIns ? 'animate-spin' : ''}`} />
-                                Refresh
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button variant="outline" onClick={fetchGuestCheckIns} disabled={loadingCheckIns}>
+                                    <RefreshCw className={`h-4 w-4 mr-2 ${loadingCheckIns ? 'animate-spin' : ''}`} />
+                                    Refresh
+                                </Button>
+                                <Button onClick={saveTodaysGuestLogs} className="flex items-center gap-2">
+                                    <Save className="h-4 w-4" />
+                                    Save Today's Guest Logs
+                                </Button>
+                            </div>
                         </div>
 
                         {loadingCheckIns ? (
@@ -432,6 +583,7 @@ export default function GuestDashboard() {
                                             <TableHead>Name</TableHead>
                                             <TableHead>Email</TableHead>
                                             <TableHead>Company</TableHead>
+                                            <TableHead>Day</TableHead>
                                             <TableHead>Check-in Time</TableHead>
                                             <TableHead>Purpose</TableHead>
                                             <TableHead className="text-right">Actions</TableHead>
@@ -447,6 +599,9 @@ export default function GuestDashboard() {
                                                     </TableCell>
                                                     <TableCell>{checkIn.guests?.email || '-'}</TableCell>
                                                     <TableCell>{checkIn.guests?.company || '-'}</TableCell>
+                                                    <TableCell>
+                                                        {checkIn.check_in_time ? getDayOfWeek(checkIn.check_in_time) : '-'}
+                                                    </TableCell>
                                                     <TableCell>
                                                         {checkIn.check_in_time ? new Date(checkIn.check_in_time).toLocaleString() : '-'}
                                                     </TableCell>
@@ -498,17 +653,9 @@ export default function GuestDashboard() {
                                 />
                             </div>
                             <div className="flex gap-2">
-                                <Button variant="outline" onClick={exportToExcel}>
-                                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                                    Excel
-                                </Button>
-                                <Button variant="outline" onClick={exportToCSV}>
-                                    <FileText className="h-4 w-4 mr-2" />
-                                    CSV
-                                </Button>
-                                <Button variant="outline" onClick={exportToPDF}>
+                                <Button variant="outline" onClick={() => setShowExportDialog(true)}>
                                     <Download className="h-4 w-4 mr-2" />
-                                    PDF
+                                    Export with Date Range
                                 </Button>
                             </div>
                         </div>
@@ -720,6 +867,54 @@ export default function GuestDashboard() {
                         <Button onClick={handleEditGuest}>
                             Update Guest
                         </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Export Dialog */}
+            <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Export Guest Check-ins</DialogTitle>
+                        <DialogDescription>
+                            Select date range and export format for guest check-in records
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <Label htmlFor="exportType">Export Format</Label>
+                            <Select value={exportType} onValueChange={(value: 'excel' | 'pdf' | 'word') => setExportType(value)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select export format" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="excel">Excel (.xlsx)</SelectItem>
+                                    <SelectItem value="pdf">PDF (.pdf)</SelectItem>
+                                    <SelectItem value="word">Word (.doc)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label>Date Range</Label>
+                            <div className="border rounded-md p-3">
+                                <Calendar
+                                    mode="range"
+                                    selected={dateRange}
+                                    onSelect={setDateRange}
+                                    className="rounded-md w-full"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setShowExportDialog(false)}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleExportWithDateRange} disabled={!dateRange || !dateRange.from || !dateRange.to}>
+                                Export
+                            </Button>
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>

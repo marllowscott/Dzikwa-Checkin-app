@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Card } from "@/components/ui/card";
 import { ProfessionalButton } from "@/components/ui/button-variants";
@@ -6,16 +6,25 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Download, Filter, Calendar, Users, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase, CheckInRecord } from "@/lib/supabase";
+import { supabase, CheckInRecord, GuestCheckInWithGuest, WorkshopCheckInWithGuest } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 
 type FilterType = "today" | "week" | "month" | "all";
+type DomainType = "employees" | "guests" | "children" | "workshop";
 
 export default function Logs() {
   const [filter, setFilter] = useState<FilterType>("today");
-  const [data, setData] = useState<CheckInRecord[]>([]);
+  const [domain, setDomain] = useState<DomainType>("employees");
+  const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+
+  const domainOptions = [
+    { key: "employees" as const, label: "Employees", icon: Users },
+    { key: "guests" as const, label: "Guests", icon: Users },
+    { key: "children" as const, label: "Children", icon: Users },
+    { key: "workshop" as const, label: "Workshop", icon: Users },
+  ];
 
   const filterOptions = [
     { key: "today" as const, label: "Today", icon: Calendar },
@@ -24,24 +33,77 @@ export default function Logs() {
     { key: "all" as const, label: "All Records", icon: Users },
   ];
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: records, error } = await supabase
-        .from('check_ins')
-        .select('*')
-        .order('check_in_time', { ascending: false });
+
+      let records = [];
+      let error = null;
+
+      // Fetch data based on selected domain
+      switch (domain) {
+        case 'employees': {
+          const employeeResult = await supabase
+            .from('check_ins')
+            .select('*')
+            .order('check_in_time', { ascending: false });
+          records = employeeResult.data || [];
+          error = employeeResult.error;
+          break;
+        }
+
+        case 'guests': {
+          const guestResult = await supabase
+            .from('guest_check_ins')
+            .select(`
+              *,
+              guests (full_name, email, phone, company)
+            `)
+            .order('check_in_time', { ascending: false });
+          records = guestResult.data || [];
+          error = guestResult.error;
+          break;
+        }
+
+        case 'children': {
+          const childResult = await supabase
+            .from('child_check_ins')
+            .select('*')
+            .order('check_in_time', { ascending: false });
+          records = childResult.data || [];
+          error = childResult.error;
+          break;
+        }
+
+        case 'workshop': {
+          const workshopResult = await supabase
+            .from('workshop_check_ins')
+            .select(`
+              *,
+              workshop_guests (full_name, email, company, workshop_type)
+            `)
+            .order('check_in_time', { ascending: false });
+          records = workshopResult.data || [];
+          error = workshopResult.error;
+          break;
+        }
+
+        default: {
+          const defaultResult = await supabase
+            .from('check_ins')
+            .select('*')
+            .order('check_in_time', { ascending: false });
+          records = defaultResult.data || [];
+          error = defaultResult.error;
+        }
+      }
 
       if (error) {
         // If table doesn't exist, show helpful message
         if (error.code === 'PGRST116' || error.code === 'PGRST205') {
           toast({
             title: "Database Setup Required",
-            description: "Please run the SQL schema in your Supabase dashboard to create the check_ins table.",
+            description: `Please run the SQL schema in your Supabase dashboard to create the ${domain} table.`,
             variant: "destructive",
           });
         } else {
@@ -49,9 +111,9 @@ export default function Logs() {
         }
         setData([]);
       } else {
-        setData(records || []);
+        setData(records);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching data:', error);
       toast({
         title: "Error",
@@ -62,7 +124,11 @@ export default function Logs() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast, domain]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const filteredData = useMemo(() => {
     const now = new Date();
@@ -72,6 +138,11 @@ export default function Logs() {
 
     return data.filter(record => {
       const recordDate = new Date(record.check_in_time);
+
+      // Skip records with invalid dates
+      if (isNaN(recordDate.getTime())) {
+        return false;
+      }
 
       switch (filter) {
         case "today":
@@ -88,25 +159,37 @@ export default function Logs() {
   }, [data, filter]);
 
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleString();
   };
 
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString([], {
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? 'Invalid Time' : date.toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
     });
   };
 
+  const getDayOfWeek = (dateString: string) => {
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? 'Invalid' : date.toLocaleDateString('en-US', { weekday: 'short' });
+  };
+
   const exportToCSV = () => {
-    const headers = ["User Name", "Check-in Time", "Check-out Time", "Status"];
+    const headers = ["User Name", "Day of Week", "Check-in Time", "Check-out Time", "Status"];
     const csvContent = [
       headers.join(","),
       ...filteredData.map(record => [
-        record.full_name,
-        formatDateTime(record.check_in_time),
-        record.check_out_time ? formatDateTime(record.check_out_time) : "Still checked in",
+        domain === 'workshop'
+          ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
+          : domain === 'guests'
+            ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
+            : record.full_name || 'Unknown',
+        getDayOfWeek(record.check_in_time),
+        formatTime(record.check_in_time),
+        record.check_out_time ? formatTime(record.check_out_time) : "-",
         record.check_out_time ? "Checked Out" : "Active"
       ].join(","))
     ].join("\n");
@@ -145,6 +228,35 @@ export default function Logs() {
               <Download className="w-6 h-6 text-primary-foreground" />
             </button>
           </div>
+
+          {/* Domain Selector */}
+          <Card className="p-6 bg-gradient-card shadow-card rounded-[7px]">
+            <div className="flex items-center gap-2 mb-4">
+              <Users className="w-5 h-5 text-primary" />
+              <span className="font-medium text-foreground">Select Domain</span>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-6">
+              {domainOptions.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <button
+                    key={option.key}
+                    onClick={() => setDomain(option.key)}
+                    className={cn(
+                      "inline-flex items-center gap-2 px-4 py-2 rounded-[7px] text-sm font-medium transition-all duration-200 hover:scale-105",
+                      domain === option.key
+                        ? "bg-primary text-primary-foreground shadow-button"
+                        : "bg-secondary text-secondary-foreground hover:bg-accent hover:shadow-card"
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
 
           {/* Filters */}
           <Card className="p-6 bg-gradient-card shadow-card rounded-[7px]">
@@ -192,6 +304,7 @@ export default function Logs() {
                   <TableHeader className="sticky top-0 bg-card/80 backdrop-blur-sm">
                     <TableRow>
                       <TableHead className="font-semibold">Full Name</TableHead>
+                      <TableHead className="font-semibold">Day</TableHead>
                       <TableHead className="font-semibold">Time In</TableHead>
                       <TableHead className="font-semibold">Time Out</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
@@ -200,7 +313,7 @@ export default function Logs() {
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-12">
+                        <TableCell colSpan={5} className="text-center py-12">
                           <div className="flex items-center justify-center gap-2">
                             <Loader2 className="w-5 h-5 animate-spin" />
                             <span>Loading records...</span>
@@ -209,7 +322,7 @@ export default function Logs() {
                       </TableRow>
                     ) : filteredData.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-12">
+                        <TableCell colSpan={5} className="text-center py-12">
                           <Users className="w-12 h-12 text-primary mx-auto mb-4" />
                           <h3 className="text-lg font-medium text-foreground mb-2">
                             No records found
@@ -228,7 +341,15 @@ export default function Logs() {
                             index % 2 === 0 ? "bg-card" : "bg-muted/20"
                           )}
                         >
-                          <TableCell className="font-medium">{record.full_name}</TableCell>
+                           <TableCell className="font-medium">
+                             {domain === 'workshop'
+                               ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
+                               : domain === 'guests'
+                                 ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
+                                 : record.full_name || 'Unknown'
+                             }
+                           </TableCell>
+                          <TableCell className="font-medium text-primary">{getDayOfWeek(record.check_in_time)}</TableCell>
                           <TableCell>{formatTime(record.check_in_time)}</TableCell>
                           <TableCell>
                             {record.check_out_time ? formatTime(record.check_out_time) : "-"}
@@ -251,7 +372,6 @@ export default function Logs() {
                   </TableBody>
                 </Table>
               </div>
-
             </div>
           </Card>
         </div>

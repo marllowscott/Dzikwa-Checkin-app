@@ -200,29 +200,28 @@ export const supabaseQueries = {
       .ilike('full_name', `%${query}%`)
       .limit(10);
 
-    // Search children
-    const { data: children } = await supabase
-      .from('dzikwa_children')
+    // Search workshop guests (guests with workshop-related purposes)
+    const { data: workshopGuests } = await supabase
+      .from('workshop_guests')
       .select('id, full_name, is_active')
       .eq('is_active', true)
       .ilike('full_name', `%${query}%`)
       .limit(10);
 
-    // Search workshop guests (guests with workshop-related purposes)
-    const { data: workshopGuests } = await supabase
-      .from('guests')
+    // Search sadza recipients
+    const { data: sadzaRecipients } = await supabase
+      .from('sadza_recipients')
       .select('id, full_name, is_active')
       .eq('is_active', true)
       .ilike('full_name', `%${query}%`)
-      .ilike('purpose', '%workshop%')
       .limit(10);
 
     // Format results with domain type
     const results = [
       ...(employees || []).map(e => ({ ...e, domain: 'employee', domainLabel: 'Employee' })),
       ...(guests || []).map(g => ({ ...g, domain: 'guest', domainLabel: 'Guest' })),
-      ...(children || []).map(c => ({ ...c, domain: 'child', domainLabel: 'Child' })),
-      ...(workshopGuests || []).map(w => ({ ...w, domain: 'workshop', domainLabel: 'Workshop' }))
+      ...(workshopGuests || []).map(w => ({ ...w, domain: 'workshop', domainLabel: 'Workshop' })),
+      ...(sadzaRecipients || []).map(s => ({ ...s, domain: 'sadza-stats', domainLabel: 'Sadza Stats' }))
     ];
 
     console.log('Unified search results:', results);
@@ -230,21 +229,27 @@ export const supabaseQueries = {
   },
 
   getActiveEmployeesForCheckout: async () => {
+    // Note: This query might not work correctly if check_in_time contains invalid dates
+    // Consider using proper date range queries instead
     return await supabase
       .from('check_ins')
       .select('employee_id, employees!inner(full_name)')
       .is('check_out_time', null)
-      .eq('check_in_time', new Date().toISOString().split('T')[0])
+      .gte('check_in_time', new Date().toISOString().split('T')[0] + 'T00:00:00.000Z')
+      .lt('check_in_time', new Date().toISOString().split('T')[0] + 'T23:59:59.999Z')
   },
 
   checkEmployeeStatus: async (employeeId: string) => {
-    // First try today's check-ins
+    const today = new Date().toISOString().split('T')[0];
+
+    // First try today's check-ins with proper date range
     const { data: todayData } = await supabase
       .from('check_ins')
       .select('*')
       .eq('employee_id', employeeId)
       .is('check_out_time', null)
-      .eq('check_in_time', new Date().toISOString().split('T')[0])
+      .gte('check_in_time', today + 'T00:00:00.000Z')
+      .lt('check_in_time', today + 'T23:59:59.999Z')
       .limit(1)
 
     if (todayData && todayData.length > 0) {
@@ -269,14 +274,17 @@ export const supabaseQueries = {
 
   // Unified check status across all domains
   checkPersonStatus: async (personId: string, domain: string) => {
+    const today = new Date().toISOString().split('T')[0];
+
     if (domain === 'employee') {
-      // Check employee status
+      // Check employee status with proper date range
       const { data: todayData } = await supabase
         .from('check_ins')
         .select('*')
         .eq('employee_id', personId)
         .is('check_out_time', null)
-        .eq('check_in_time', new Date().toISOString().split('T')[0])
+        .gte('check_in_time', today + 'T00:00:00.000Z')
+        .lt('check_in_time', today + 'T23:59:59.999Z')
         .limit(1);
 
       if (todayData && todayData.length > 0) {
@@ -295,13 +303,14 @@ export const supabaseQueries = {
         return { checkedIn: true, domain: 'employee', checkInId: anyData[0].id, table: 'check_ins' };
       }
     } else if (domain === 'guest') {
-      // Check guest status
+      // Check guest status with proper date range
       const { data: todayData } = await supabase
         .from('guest_check_ins')
         .select('*')
         .eq('guest_id', personId)
         .is('check_out_time', null)
-        .eq('check_in_time', new Date().toISOString().split('T')[0])
+        .gte('check_in_time', today + 'T00:00:00.000Z')
+        .lt('check_in_time', today + 'T23:59:59.999Z')
         .limit(1);
 
       if (todayData && todayData.length > 0) {
@@ -319,30 +328,31 @@ export const supabaseQueries = {
       if (anyData && anyData.length > 0) {
         return { checkedIn: true, domain: 'guest', checkInId: anyData[0].id, table: 'guest_check_ins' };
       }
-    } else if (domain === 'child') {
-      // Check child status
+    } else if (domain === 'workshop') {
+      // Check workshop status with proper date range
       const { data: todayData } = await supabase
-        .from('child_check_ins')
+        .from('workshop_check_ins')
         .select('*')
-        .eq('child_id', personId)
+        .eq('workshop_guest_id', personId)
         .is('check_out_time', null)
-        .eq('check_in_time', new Date().toISOString().split('T')[0])
+        .gte('check_in_time', today + 'T00:00:00.000Z')
+        .lt('check_in_time', today + 'T23:59:59.999Z')
         .limit(1);
 
       if (todayData && todayData.length > 0) {
-        return { checkedIn: true, domain: 'child', checkInId: todayData[0].id, table: 'child_check_ins' };
+        return { checkedIn: true, domain: 'workshop', checkInId: todayData[0].id, table: 'workshop_check_ins' };
       }
 
       const { data: anyData } = await supabase
-        .from('child_check_ins')
+        .from('workshop_check_ins')
         .select('*')
-        .eq('child_id', personId)
+        .eq('workshop_guest_id', personId)
         .is('check_out_time', null)
         .order('check_in_time', { ascending: false })
         .limit(1);
 
       if (anyData && anyData.length > 0) {
-        return { checkedIn: true, domain: 'child', checkInId: anyData[0].id, table: 'child_check_ins' };
+        return { checkedIn: true, domain: 'workshop', checkInId: anyData[0].id, table: 'workshop_check_ins' };
       }
     }
 
@@ -380,6 +390,10 @@ export const supabaseQueries = {
       .is('check_out_time', null)
       .order('check_in_time', { ascending: false })
       .limit(1)
+      .eq('employee_id', employeeId)
+      .is('check_out_time', null)
+      .order('check_in_time', { ascending: false })
+      .limit(1)
 
     if (error) {
       throw new Error('Database error: ' + error.message);
@@ -406,16 +420,32 @@ export const supabaseQueries = {
     return updatedRecord;
   },
 
-  // Guest management
-  createGuestCheckIn: async (guestData: Omit<Guest, 'id' | 'checked_in_at'>) => {
-    return await supabase
-      .from('guests')
-      .insert({
-        ...guestData,
-        checked_in_at: new Date().toISOString()
-      })
+  createGuestCheckIn: async (guestId: string, visitPurpose?: string) => {
+    const { data, error } = await supabase
+      .from('guest_check_ins')
+      .insert([{
+        guest_id: guestId,
+        check_in_time: new Date().toISOString(),
+        purpose: visitPurpose || 'Visit',
+        notes: null
+      }])
       .select()
-      .single()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  checkOutGuest: async (checkInId: string) => {
+    const { data, error } = await supabase
+      .from('guest_check_ins')
+      .update({ check_out_time: new Date().toISOString() })
+      .eq('id', checkInId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   },
 }
 
@@ -492,42 +522,6 @@ export const deleteGuest = async (id: string) => {
     .eq('id', id);
 
   if (error) throw error;
-};
-
-// Guest Check-In Functions
-export const checkInGuest = async (guestId: string, purpose?: string) => {
-  const { data, error } = await supabase
-    .from('guest_check_ins')
-    .insert([{
-      guest_id: guestId,
-      check_in_time: new Date().toISOString(),
-      purpose: purpose || 'Visit',
-      notes: null
-    }])
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-};
-
-export const checkOutGuest = async (checkInId: string) => {
-  const { data, error } = await supabase
-    .from('guest_check_ins')
-    .update({ check_out_time: new Date().toISOString() })
-    .eq('id', checkInId)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-};
-
-export const getGuestCheckIns = async () => {
-  return await supabase
-    .from('guest_check_ins')
-    .select('*, guests!full_name')
-    .order('check_in_time', { ascending: false });
 };
 
 // Dzikwa Children Functions
@@ -642,7 +636,170 @@ export const checkEmployeeStatus = supabaseQueries.checkEmployeeStatus;
 export const checkPersonStatus = supabaseQueries.checkPersonStatus;
 export const createCheckIn = supabaseQueries.createCheckIn;
 export const createCheckOut = supabaseQueries.createCheckOut;
-export const createGuestCheckIn = supabaseQueries.createGuestCheckIn;
+export const checkInGuest = supabaseQueries.createGuestCheckIn;
+export const checkOutGuest = supabaseQueries.checkOutGuest;
+
+// Sadza Statistics Functions
+export const createSadzaRecipient = async (recipientData: {
+  full_name: string;
+  phone?: string;
+  email?: string;
+  is_dzikwa_child?: boolean;
+  school_name?: string;
+}) => {
+  const { data, error } = await supabase
+    .from('sadza_recipients')
+    .insert([{
+      full_name: recipientData.full_name.trim(),
+      phone: recipientData.phone?.trim() || null,
+      email: recipientData.email?.trim() || null,
+      is_dzikwa_child: recipientData.is_dzikwa_child || false,
+      school_name: recipientData.school_name?.trim() || null,
+      is_active: true
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export const getSadzaRecipients = async () => {
+  return await supabase
+    .from('sadza_recipients')
+    .select('*')
+    .eq('is_active', true)
+    .order('full_name');
+};
+
+export const updateSadzaRecipient = async (id: string, recipientData: {
+  full_name?: string;
+  phone?: string;
+  email?: string;
+  is_dzikwa_child?: boolean;
+  school_name?: string;
+  is_active?: boolean;
+}) => {
+  const { data, error } = await supabase
+    .from('sadza_recipients')
+    .update({
+      full_name: recipientData.full_name?.trim(),
+      phone: recipientData.phone?.trim() || null,
+      email: recipientData.email?.trim() || null,
+      is_dzikwa_child: recipientData.is_dzikwa_child,
+      school_name: recipientData.school_name?.trim() || null,
+      is_active: recipientData.is_active !== undefined ? recipientData.is_active : true
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export const deleteSadzaRecipient = async (id: string) => {
+  const { error } = await supabase
+    .from('sadza_recipients')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+};
+
+export const createSadzaDistribution = async (distributionData: {
+  recipient_id: string;
+  sadza_portions?: number;
+  distribution_purpose?: string;
+  notes?: string;
+}) => {
+  const { data, error } = await supabase
+    .from('sadza_distributions')
+    .insert([{
+      recipient_id: distributionData.recipient_id,
+      distribution_date: new Date().toISOString().split('T')[0],
+      sadza_portions: distributionData.sadza_portions || 1,
+      distribution_purpose: distributionData.distribution_purpose || 'Community Feeding',
+      notes: distributionData.notes?.trim() || null
+    }])
+    .select(`
+      *,
+      sadza_recipients(full_name, phone, email, is_dzikwa_child, school_name)
+    `)
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export const getSadzaDistributions = async (startDate?: string, endDate?: string) => {
+  let query = supabase
+    .from('sadza_distributions')
+    .select(`
+      *,
+      sadza_recipients(full_name, phone, email, is_dzikwa_child, school_name)
+    `)
+    .order('distribution_date', { ascending: false });
+
+  if (startDate) {
+    query = query.gte('distribution_date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('distribution_date', endDate);
+  }
+
+  return await query;
+};
+
+export const getSadzaStats = async () => {
+  const { data: totalRecipients } = await supabase
+    .from('sadza_recipients')
+    .select('id')
+    .eq('is_active', true);
+
+  const { data: dzikwaChildren } = await supabase
+    .from('sadza_recipients')
+    .select('id')
+    .eq('is_active', true)
+    .eq('is_dzikwa_child', true);
+
+  const { data: communityMembers } = await supabase
+    .from('sadza_recipients')
+    .select('id')
+    .eq('is_active', true)
+    .eq('is_dzikwa_child', false);
+
+  const { data: totalDistributions } = await supabase
+    .from('sadza_distributions')
+    .select('sadza_portions');
+
+  const totalPortions = totalDistributions?.reduce((sum, dist) => sum + (dist.sadza_portions || 0), 0) || 0;
+
+  return {
+    total_recipients: totalRecipients?.length || 0,
+    dzikwa_children: dzikwaChildren?.length || 0,
+    community_members: communityMembers?.length || 0,
+    total_portions_distributed: totalPortions
+  };
+};
+
+export interface SadzaRecipient {
+  id: string
+  full_name: string
+  phone?: string
+  email?: string
+  is_dzikwa_child?: boolean
+  school_name?: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface SadzaStats {
+  total_recipients: number
+  dzikwa_children: number
+  community_members: number
+  total_portions_distributed: number
+}
 
 export interface CheckInRecord {
   id: string
@@ -653,6 +810,41 @@ export interface CheckInRecord {
   check_out_time?: string
   checked_out?: boolean
   created_at: string
+}
+
+export interface GuestCheckInWithGuest extends GuestCheckIn {
+  guests?: Guest
+}
+
+export interface WorkshopCheckInWithGuest {
+  id: string
+  workshop_guest_id: string
+  check_in_time: string
+  check_out_time?: string
+  workshop_type?: string
+  notes?: string
+  saved?: boolean
+  saved_date?: string
+  workshop_guests?: {
+    full_name: string
+    email?: string
+    company?: string
+    workshop_type?: string
+  }
+}
+
+export interface SadzaDistributionWithRecipient extends SadzaDistribution {
+  sadza_recipients?: SadzaRecipient
+}
+
+export interface SadzaDistribution {
+  id: string
+  recipient_id: string
+  distribution_date: string
+  sadza_portions?: number
+  distribution_purpose?: string
+  notes?: string
+  sadza_recipients?: SadzaRecipient
 }
 
 export interface Employee {
@@ -727,8 +919,6 @@ export interface SavedLog {
   month: string
   total_records: number
   log_data: any[]
-  json_content: string
-  csv_content: string
   summary_content: string
   saved_at: string
   saved_by?: string

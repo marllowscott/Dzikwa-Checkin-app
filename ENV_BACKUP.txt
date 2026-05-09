@@ -1,0 +1,13 @@
+# SUPABASE CONFIGURATION - BACKUP COPY
+# If your .env file gets lost, copy these values back to .env
+
+VITE_SUPABASE_URL=https://qdighwfpcnhhcnerzzvy.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkaWdod2ZwY25oaGNuZXJ6enZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2NzkzNjIsImV4cCI6MjA4NTI1NTM2Mn0.fp828UyqmkbRQX3QtBZo16AX0fTldqDslrp9M1Wdju0
+VITE_SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkaWdod2ZwY25oaGNuZXJ6enZ5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTY3OTM2MiwiZXhwIjoyMDg1MjU1MzYyfQ.gr4FoHP_a6BN3fEKVosvtZvi7YA1WM1LdtTeBh4vhOo
+
+# HOW TO RESTORE:
+# 1. Copy everything above to your .env file
+# 2. Save the .env file
+# 3. Restart your dev server: npm run dev
+
+# This file is tracked in git so you'll never lose your credentials again!
