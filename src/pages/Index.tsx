@@ -30,29 +30,6 @@ export default function Index() {
     setSelectedDomain(null);
   };
 
-  // Admin trigger - typing "admin"
-  useEffect(() => {
-    let inputBuffer = '';
-    const handleKeyDown = (e: KeyboardEvent) => {
-      inputBuffer += e.key.toLowerCase();
-
-      // Check if "admin" was typed
-      if (inputBuffer.includes('admin')) {
-        e.preventDefault();
-        navigate('/admin-login');
-        inputBuffer = '';
-      }
-
-      // Keep buffer manageable (last 10 characters)
-      if (inputBuffer.length > 10) {
-        inputBuffer = inputBuffer.slice(-10);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate]);
-
   // Unified check-in handler for all domains
   const handleCheckIn = async (personId: string, domain: string) => {
     setIsLoading(true);

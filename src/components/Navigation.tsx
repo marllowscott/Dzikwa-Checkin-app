@@ -89,11 +89,11 @@ export const Navigation = memo(() => {
       ];
     }
 
-    // HIDE ADMIN UI - Admin access only via double-tap 'A' trigger
-    // No admin buttons or links visible in navigation
+    // Admin access via navigation tab
     return [
       { href: "/", label: "Check In/Out", icon: CheckInIcon },
       { href: "/logs", label: "View Logs", icon: ViewLogsIcon },
+      { href: "/admin-login", label: "Admin", icon: AdminIcon },
     ];
 
   }, [location.pathname]);

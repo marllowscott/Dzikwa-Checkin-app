@@ -649,7 +649,7 @@ export const createSadzaRecipient = async (recipientData: {
   is_dzikwa_child?: boolean;
   school_name?: string;
 }) => {
-  const { data, error } = await supabase
+  const { data, error } = await adminSupabase
     .from('sadza_recipients')
     .insert([{
       full_name: recipientData.full_name.trim(),
