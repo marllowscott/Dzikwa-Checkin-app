@@ -1,4 +1,4 @@
-import { useState, useCallback, memo, useEffect } from "react";
+import { useState, useCallback, memo, useEffect, useRef } from "react";
 import { ProfessionalButton } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +34,10 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
   const [hasSearched, setHasSearched] = useState(false);
   const { toast } = useToast();
 
+  // Refs for debouncing
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchAbortControllerRef = useRef<AbortController | null>(null);
+
   // Check person status when selection changes
   useEffect(() => {
     if (selectedPerson) {
@@ -51,17 +55,11 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
     }
   }, [selectedPerson]);
 
-  // Search all domains
-  const handleSearch = useCallback(async (query: string) => {
-    setSearchQuery(query);
-    setSearchError(null);
-
-    if (query.length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      setIsSearching(false);
-      setHasSearched(false);
-      return;
+  // Actual search function (debounced)
+  const performSearch = useCallback(async (query: string) => {
+    // Cancel previous search if still running
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
     }
 
     setIsSearching(true);
@@ -76,7 +74,13 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
       setSuggestions(activeResults as Person[]);
       setShowSuggestions(true);
       setHasSearched(true);
+      setSearchError(null);
     } catch (error) {
+      // Don't show error if search was aborted
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
+
       console.error('Search error:', error);
       setSuggestions([]);
       setShowSuggestions(true); // Show error state
@@ -92,6 +96,43 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
     }
   }, []);
 
+  // Debounced search handler
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+    setSearchError(null);
+
+    // Handle minimum length check immediately
+    if (query.length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setIsSearching(false);
+      setHasSearched(false);
+      return;
+    }
+
+    // Clear existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Set timeout for search only if we have enough characters
+    debounceTimeoutRef.current = setTimeout(() => {
+      performSearch(query);
+    }, 500); // 500ms delay for better typing experience
+  }, [performSearch]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      if (searchAbortControllerRef.current) {
+        searchAbortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
   // Handle person selection
   const handlePersonSelect = useCallback((person: Person) => {
     setSelectedPerson(person);
@@ -105,6 +146,16 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
 
   // Clear search
   const clearSearch = useCallback(() => {
+    // Clear debounce timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Cancel ongoing search
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
+
     setSearchQuery("");
     setSuggestions([]);
     setShowSuggestions(false);
@@ -226,66 +277,69 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
               Name
             </Label>
             <div className="relative">
-               <Input
-                 id="personSearch"
-                 type="text"
-                 placeholder="Search employees, guests, workshop participants, children, or sadza recipients..."
-                 value={searchQuery}
-                 onChange={(e) => handleSearch(e.target.value)}
-                 onKeyPress={handleKeyPress}
-                 className="h-10 sm:h-12 text-sm sm:text-base focus:ring-2 focus:ring-primary/50 transition-all duration-200"
-                 disabled={isLoading || isSearching}
-               />
+              <Input
+                id="personSearch"
+                type="text"
+                placeholder="Search employees, guests, workshop participants, children, or sadza recipients..."
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                onKeyPress={handleKeyPress}
+                className="h-10 sm:h-12 text-sm sm:text-base focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                disabled={isLoading || isSearching}
+              />
 
-              {/* Results Container - Fixed Height */}
+              {/* Results Container - Responsive Height */}
               {showSuggestions && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-primary rounded-md shadow-lg z-50 transition-all duration-200" style={{ minHeight: '120px', maxHeight: '200px' }}>
-                  <div className="p-4">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-primary rounded-md shadow-lg z-50 transition-all duration-200" style={{ minHeight: '120px', maxHeight: '50vh' }}>
+                  <div className="p-3 sm:p-4">
                     {isSearching ? (
                       // Loading State
                       <div className="flex flex-col items-center justify-center h-20">
-                        <Loader2 className="w-6 h-6 animate-spin text-primary mb-2" />
-                        <p className="text-sm text-muted-foreground">Searching...</p>
+                        <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin text-primary mb-2" />
+                        <p className="text-xs sm:text-sm text-muted-foreground">Searching...</p>
                       </div>
                     ) : searchError ? (
                       // Error State
                       <div className="flex flex-col items-center justify-center h-20">
-                        <AlertCircle className="w-6 h-6 text-destructive mb-2" />
-                        <p className="text-sm text-center text-muted-foreground mb-3">{searchError}</p>
+                        <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 text-destructive mb-2" />
+                        <p className="text-xs sm:text-sm text-center text-muted-foreground mb-3">{searchError}</p>
                         <button
                           onClick={retrySearch}
-                          className="flex items-center gap-2 px-3 py-1 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                          className="flex items-center gap-2 px-3 py-2 text-xs sm:text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors min-h-[36px]"
                         >
-                          <RefreshCw className="w-4 h-4" />
+                          <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4" />
                           Try Again
                         </button>
                       </div>
                     ) : hasSearched && suggestions.length === 0 ? (
                       // Empty State
                       <div className="flex flex-col items-center justify-center h-20">
-                        <Search className="w-6 h-6 text-muted-foreground mb-2" />
-                        <p className="text-sm text-center text-muted-foreground mb-3">
-                          No matching name found. Please check your spelling or try a different name. If this is a new person, use the "+" button below to add them first.
+                        <Search className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground mb-2" />
+                        <p className="text-xs sm:text-sm text-center text-muted-foreground mb-3">
+                          No matching name found. Please check your spelling or try a different name.
+                        </p>
+                        <p className="text-xs text-center text-muted-foreground mb-3">
+                          Use the "+" button to add a new person.
                         </p>
                         <button
                           onClick={clearSearch}
-                          className="px-3 py-1 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80 transition-colors"
+                          className="px-3 py-2 text-xs sm:text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80 transition-colors min-h-[36px]"
                         >
                           Clear Search
                         </button>
                       </div>
                     ) : (
                       // Success State with Results
-                      <div className="max-h-32 overflow-y-auto">
+                      <div className="max-h-32 sm:max-h-48 overflow-y-auto">
                         {suggestions.map((person) => (
                           <button
                             key={person.id}
                             type="button"
                             onClick={() => handlePersonSelect(person)}
-                            className="w-full px-3 py-2 text-left hover:bg-muted transition-colors text-sm flex items-center justify-between rounded-sm"
+                            className="w-full px-3 py-2 text-left hover:bg-muted transition-colors text-xs sm:text-sm flex items-center justify-between rounded-sm min-h-[44px]"
                           >
-                            <span>{person.full_name}</span>
-                            <Badge variant={getDomainBadgeVariant(person.domain)} className="ml-2 text-xs">
+                            <span className="truncate pr-2">{person.full_name}</span>
+                            <Badge variant={getDomainBadgeVariant(person.domain)} className="ml-2 text-xs flex-shrink-0">
                               {person.domainLabel}
                             </Badge>
                           </button>
@@ -344,3 +398,5 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
 });
 
 CheckInForm.displayName = 'CheckInForm';
+
+export default CheckInForm;

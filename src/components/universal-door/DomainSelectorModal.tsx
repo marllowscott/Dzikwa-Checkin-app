@@ -57,24 +57,24 @@ export function DomainSelectorModal({ open, onOpenChange, onSelectDomain }: Doma
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md w-[95vw] max-w-[400px] mx-4">
         <DialogHeader>
-          <DialogTitle>Add New Person</DialogTitle>
+          <DialogTitle className="text-lg">Add New Person</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-3 py-4 max-h-[60vh] overflow-y-auto">
           {domains.map((domain) => (
             <Card
               key={domain.key}
-              className="p-4 hover:bg-muted/50 cursor-pointer transition-colors"
+              className="p-3 sm:p-4 hover:bg-muted/50 cursor-pointer transition-colors active:scale-95 min-h-[60px] sm:min-h-[72px]"
               onClick={() => handleSelect(domain.key)}
             >
               <div className="flex items-center gap-3">
-                <div className="flex-shrink-0 w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-lg flex items-center justify-center">
                   {domain.icon}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-sm">{domain.name}</h3>
-                  <p className="text-xs text-muted-foreground mt-1">{domain.description}</p>
+                  <h3 className="font-medium text-sm sm:text-base truncate">{domain.name}</h3>
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{domain.description}</p>
                 </div>
               </div>
             </Card>

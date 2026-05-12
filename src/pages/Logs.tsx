@@ -269,7 +269,7 @@ export default function Logs() {
               <span className="font-medium text-foreground">Select Domain</span>
             </div>
 
-            <div className="flex flex-wrap gap-2 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mb-6">
               {domainOptions.map((option) => {
                 const Icon = option.icon;
                 return (
@@ -277,14 +277,14 @@ export default function Logs() {
                     key={option.key}
                     onClick={() => setDomain(option.key)}
                     className={cn(
-                      "inline-flex items-center gap-2 px-4 py-2 rounded-[7px] text-sm font-medium transition-all duration-200 hover:scale-105",
+                      "inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-[7px] text-sm font-medium transition-all duration-200 hover:scale-105 min-h-[44px]",
                       domain === option.key
                         ? "bg-primary text-primary-foreground shadow-button"
                         : "bg-secondary text-secondary-foreground hover:bg-accent hover:shadow-card"
                     )}
                   >
-                    <Icon className="w-4 h-4" />
-                    {option.label}
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">{option.label}</span>
                   </button>
                 );
               })}
@@ -298,7 +298,7 @@ export default function Logs() {
               <span className="font-medium text-foreground">Filter Records</span>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {filterOptions.map((option) => {
                 const Icon = option.icon;
                 return (
@@ -306,14 +306,14 @@ export default function Logs() {
                     key={option.key}
                     onClick={() => setFilter(option.key)}
                     className={cn(
-                      "inline-flex items-center gap-2 px-4 py-2 rounded-[7px] text-sm font-medium transition-all duration-200 hover:scale-105",
+                      "inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-[7px] text-sm font-medium transition-all duration-200 hover:scale-105 min-h-[44px]",
                       filter === option.key
                         ? "bg-primary text-primary-foreground shadow-button"
                         : "bg-secondary text-secondary-foreground hover:bg-accent hover:shadow-card"
                     )}
                   >
-                    <Icon className="w-4 h-4" />
-                    {option.label}
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">{option.label}</span>
                   </button>
                 );
               })}
@@ -332,21 +332,22 @@ export default function Logs() {
                 </Badge>
               </div>
 
-              <div className="overflow-x-auto rounded-[7px] border border-primary">
+              {/* Desktop Table View */}
+              <div className="hidden lg:block overflow-x-auto rounded-[7px] border border-primary">
                 <Table>
                   <TableHeader className="sticky top-0 bg-card/80 backdrop-blur-sm">
                     <TableRow>
-                      <TableHead className="font-semibold">
+                      <TableHead className="font-semibold min-w-[150px]">
                         {domain === 'sadza-stats' ? 'Recipient Name' : 'Full Name'}
                       </TableHead>
-                      <TableHead className="font-semibold">Day</TableHead>
-                      <TableHead className="font-semibold">
+                      <TableHead className="font-semibold min-w-[80px]">Day</TableHead>
+                      <TableHead className="font-semibold min-w-[120px]">
                         {domain === 'sadza-stats' ? 'Distribution Date' : 'Time In'}
                       </TableHead>
-                      <TableHead className="font-semibold">
+                      <TableHead className="font-semibold min-w-[120px]">
                         {domain === 'sadza-stats' ? 'Portions' : 'Time Out'}
                       </TableHead>
-                      <TableHead className="font-semibold">
+                      <TableHead className="font-semibold min-w-[100px]">
                         {domain === 'sadza-stats' ? 'Purpose' : 'Status'}
                       </TableHead>
                     </TableRow>
@@ -424,6 +425,96 @@ export default function Logs() {
                     )}
                   </TableBody>
                 </Table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="lg:hidden space-y-3">
+                {loading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
+                    <span>Loading records...</span>
+                  </div>
+                ) : filteredData.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Users className="w-12 h-12 text-primary mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-foreground mb-2">
+                      No records found
+                    </h3>
+                    <p className="text-muted-foreground">
+                      No check-in records match the selected filter.
+                    </p>
+                  </div>
+                ) : (
+                  filteredData.map((record, index) => (
+                    <Card key={record.id} className="p-4 bg-gradient-card shadow-card rounded-[7px]">
+                      <div className="space-y-3">
+                        {/* Name and Status Row */}
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-foreground truncate">
+                              {domain === 'sadza-stats'
+                                ? record.sadza_recipients?.full_name || 'Unknown'
+                                : domain === 'workshop'
+                                  ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
+                                  : domain === 'guests'
+                                    ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
+                                    : record.full_name || 'Unknown'
+                              }
+                            </p>
+                            <p className="text-sm text-primary font-medium">
+                              {getDayOfWeek(domain === 'sadza-stats' ? record.distribution_date : record.check_in_time)}
+                            </p>
+                          </div>
+                          <div className="ml-2">
+                            {domain === 'sadza-stats' ? (
+                              <Badge variant="secondary" className="bg-orange-100 text-orange-800 text-xs">
+                                {record.distribution_purpose || 'Community Feeding'}
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant={record.check_out_time ? "default" : "secondary"}
+                                className={cn(
+                                  "text-xs",
+                                  record.check_out_time
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-blue-100 text-blue-800"
+                                )}
+                              >
+                                {record.check_out_time ? "Checked Out" : "Active"}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Time Details Row */}
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground text-xs mb-1">
+                              {domain === 'sadza-stats' ? 'Distribution Date' : 'Time In'}
+                            </p>
+                            <p className="font-medium">
+                              {domain === 'sadza-stats'
+                                ? formatDateTime(record.distribution_date)
+                                : formatTime(record.check_in_time)
+                              }
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground text-xs mb-1">
+                              {domain === 'sadza-stats' ? 'Portions' : 'Time Out'}
+                            </p>
+                            <p className="font-medium">
+                              {domain === 'sadza-stats'
+                                ? record.sadza_portions || 1
+                                : record.check_out_time ? formatTime(record.check_out_time) : "-"
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))
+                )}
               </div>
             </div>
           </Card>

@@ -223,21 +223,23 @@ export default function Index() {
 
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
-          <div className="text-center mb-6 sm:mb-8">
+          <div className="text-center mb-6 sm:mb-8 w-full">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground mb-3 sm:mb-4 px-4">
               Dzikwa Check-In System
             </h1>
-            <p className="text-base sm:text-lg lg:text-xl text-muted-foreground max-w-2xl px-4">
+            <p className="text-base sm:text-lg lg:text-xl text-muted-foreground max-w-2xl mx-auto px-4">
               Streamlined attendance tracking for Dzikwa.
               Check in and out with just a few clicks.
             </p>
           </div>
 
-          <CheckInForm
-            onCheckIn={handleCheckIn}
-            onCheckOut={handleCheckOut}
-            isLoading={isLoading}
-          />
+          <div className="w-full max-w-md sm:max-w-lg">
+            <CheckInForm
+              onCheckIn={handleCheckIn}
+              onCheckOut={handleCheckOut}
+              isLoading={isLoading}
+            />
+          </div>
 
           <FloatingAddButton onClick={handleAddButtonClick} />
 
@@ -248,9 +250,6 @@ export default function Index() {
                 Logs
               </a>{" "}
               page.
-            </p>
-            <p className="text-xs text-muted-foreground mt-2 opacity-50">
-
             </p>
           </div>
         </div>
@@ -265,9 +264,9 @@ export default function Index() {
 
       {/* Dynamic Form Modal */}
       <Dialog open={!!selectedDomain} onOpenChange={(open) => !open && handleCloseForm()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md w-[95vw] max-w-[400px] mx-4 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add New {selectedDomain === 'sadza-stats' ? 'Sadza Recipient' : selectedDomain?.charAt(0).toUpperCase() + selectedDomain?.slice(1)}</DialogTitle>
+            <DialogTitle className="text-lg">Add New {selectedDomain === 'sadza-stats' ? 'Sadza Recipient' : selectedDomain?.charAt(0).toUpperCase() + selectedDomain?.slice(1)}</DialogTitle>
           </DialogHeader>
           {selectedDomain && (
             <DynamicDomainForm

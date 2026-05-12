@@ -881,15 +881,19 @@ export default function AdminDashboard() {
 
       const summary = `Total records: ${todaysRecords.length}\nChecked in: ${todaysRecords.filter(r => !r.check_out_time).length}\nChecked out: ${todaysRecords.filter(r => r.check_out_time).length}`;
 
+      // Get current month in YYYY-MM format
+      const currentDate = new Date();
+      const currentMonth = currentDate.toISOString().slice(0, 7); // YYYY-MM
+
       const { error } = await supabase
         .from('saved_logs')
         .insert({
           date: today,
+          month: currentMonth,
           total_records: todaysRecords.length,
           log_data: todaysRecords,
-          json_content: JSON.stringify(todaysRecords, null, 2),
-          csv_content: Papa.unparse(todaysRecords),
-          summary_content: summary
+          summary_content: summary,
+          saved_by: 'admin'
         });
 
       if (error) throw error;
@@ -898,6 +902,13 @@ export default function AdminDashboard() {
         title: "Success",
         description: `Today's ${todaysRecords.length} records saved successfully`,
       });
+
+      // Clear today's records to prepare for next day
+      const updatedData = data.filter(record =>
+        new Date(record.check_in_time).toISOString().split('T')[0] !== today
+      );
+      setData(updatedData);
+      setFilteredData(updatedData);
 
       loadSavedLogs();
     } catch (error) {
@@ -1195,55 +1206,55 @@ export default function AdminDashboard() {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <Card className="p-6 bg-gradient-card shadow-card rounded-[7px] hover:shadow-elevation transition-all duration-300 hover:scale-[1.02] cursor-pointer">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-[7px] flex items-center justify-center transition-colors hover:bg-primary/20">
-                  <FileText className="w-6 h-6 text-primary" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <Card className="p-4 sm:p-6 bg-gradient-card shadow-card rounded-[7px] hover:shadow-elevation transition-all duration-300 hover:scale-[1.02] cursor-pointer">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-[7px] flex items-center justify-center transition-colors hover:bg-primary/20 flex-shrink-0">
+                  <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Records</p>
-                  <p className="text-2xl font-bold">{stats.totalRecords}</p>
-                  <p className="text-xs text-muted-foreground mt-1">↗ +12% this week</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 bg-gradient-card shadow-card rounded-[7px] hover:shadow-elevation transition-all duration-300 hover:scale-[1.02] cursor-pointer">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-success/10 rounded-[7px] flex items-center justify-center transition-colors hover:bg-success/20">
-                  <CheckInIcon className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Active Check-Ins</p>
-                  <p className="text-2xl font-bold">{stats.activeCheckIns}</p>
-                  <p className="text-xs text-muted-foreground mt-1">↗ +8% today</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Records</p>
+                  <p className="text-xl sm:text-2xl font-bold truncate">{stats.totalRecords}</p>
+                  <p className="text-xs text-muted-foreground mt-1 hidden sm:block">↗ +12% this week</p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-6 bg-gradient-card shadow-card rounded-[7px] hover:shadow-elevation transition-all duration-300 hover:scale-[1.02] cursor-pointer">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-destructive/10 rounded-[7px] flex items-center justify-center transition-colors hover:bg-destructive/20">
-                  <TrendingUp className="w-6 h-6 text-destructive" />
+            <Card className="p-4 sm:p-6 bg-gradient-card shadow-card rounded-[7px] hover:shadow-elevation transition-all duration-300 hover:scale-[1.02] cursor-pointer">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-success/10 rounded-[7px] flex items-center justify-center transition-colors hover:bg-success/20 flex-shrink-0">
+                  <CheckInIcon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Completed Sessions</p>
-                  <p className="text-2xl font-bold">{stats.completedSessions}</p>
-                  <p className="text-xs text-muted-foreground mt-1">↗ +15% this month</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground">Active Check-Ins</p>
+                  <p className="text-xl sm:text-2xl font-bold truncate">{stats.activeCheckIns}</p>
+                  <p className="text-xs text-muted-foreground mt-1 hidden sm:block">↗ +8% today</p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-6 bg-gradient-card shadow-card rounded-[7px] hover:shadow-elevation transition-all duration-300 hover:scale-[1.02] cursor-pointer">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-accent/10 rounded-[7px] flex items-center justify-center transition-colors hover:bg-accent/20">
-                  <Users className="w-6 h-6 text-accent-foreground" />
+            <Card className="p-4 sm:p-6 bg-gradient-card shadow-card rounded-[7px] hover:shadow-elevation transition-all duration-300 hover:scale-[1.02] cursor-pointer">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-destructive/10 rounded-[7px] flex items-center justify-center transition-colors hover:bg-destructive/20 flex-shrink-0">
+                  <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-destructive" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Unique Users</p>
-                  <p className="text-2xl font-bold">{stats.uniqueUsers}</p>
-                  <p className="text-xs text-muted-foreground mt-1">↗ +5% this week</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground">Completed Sessions</p>
+                  <p className="text-xl sm:text-2xl font-bold truncate">{stats.completedSessions}</p>
+                  <p className="text-xs text-muted-foreground mt-1 hidden sm:block">↗ +15% this month</p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 sm:p-6 bg-gradient-card shadow-card rounded-[7px] hover:shadow-elevation transition-all duration-300 hover:scale-[1.02] cursor-pointer">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent/10 rounded-[7px] flex items-center justify-center transition-colors hover:bg-accent/20 flex-shrink-0">
+                  <Users className="w-5 h-5 sm:w-6 sm:h-6 text-accent-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground">Unique Users</p>
+                  <p className="text-xl sm:text-2xl font-bold truncate">{stats.uniqueUsers}</p>
+                  <p className="text-xs text-muted-foreground mt-1 hidden sm:block">↗ +5% this week</p>
                 </div>
               </div>
             </Card>

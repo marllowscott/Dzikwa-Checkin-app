@@ -86,6 +86,7 @@ export default function GuestDashboard() {
             const { data, error } = await supabase
                 .from('guest_check_ins')
                 .select('*, guests(*)')
+                .is('check_out_time', null) // Only get active check-ins
                 .order('check_in_time', { ascending: false })
                 .limit(100);
 

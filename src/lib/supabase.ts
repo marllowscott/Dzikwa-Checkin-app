@@ -184,37 +184,47 @@ export const supabaseQueries = {
     console.log('Searching all domains with query:', query);
     const lowerQuery = query.toLowerCase();
 
-    // Search employees
-    const { data: employees } = await supabase
-      .from('employees')
-      .select('id, full_name, is_active')
-      .eq('is_active', true)
-      .ilike('full_name', `%${query}%`)
-      .limit(10);
+    // Run all searches in parallel for better performance
+    const [
+      employeesResult,
+      guestsResult,
+      workshopGuestsResult,
+      sadzaRecipientsResult
+    ] = await Promise.all([
+      supabase
+        .from('employees')
+        .select('id, full_name, is_active')
+        .eq('is_active', true)
+        .ilike('full_name', `%${query}%`)
+        .limit(10),
 
-    // Search guests
-    const { data: guests } = await supabase
-      .from('guests')
-      .select('id, full_name, is_active')
-      .eq('is_active', true)
-      .ilike('full_name', `%${query}%`)
-      .limit(10);
+      supabase
+        .from('guests')
+        .select('id, full_name, is_active')
+        .eq('is_active', true)
+        .ilike('full_name', `%${query}%`)
+        .limit(10),
 
-    // Search workshop guests (guests with workshop-related purposes)
-    const { data: workshopGuests } = await supabase
-      .from('workshop_guests')
-      .select('id, full_name, is_active')
-      .eq('is_active', true)
-      .ilike('full_name', `%${query}%`)
-      .limit(10);
+      supabase
+        .from('workshop_guests')
+        .select('id, full_name, is_active')
+        .eq('is_active', true)
+        .ilike('full_name', `%${query}%`)
+        .limit(10),
 
-    // Search sadza recipients
-    const { data: sadzaRecipients } = await supabase
-      .from('sadza_recipients')
-      .select('id, full_name, is_active')
-      .eq('is_active', true)
-      .ilike('full_name', `%${query}%`)
-      .limit(10);
+      supabase
+        .from('sadza_recipients')
+        .select('id, full_name, is_active')
+        .eq('is_active', true)
+        .ilike('full_name', `%${query}%`)
+        .limit(10)
+    ]);
+
+    // Extract data from results
+    const employees = employeesResult.data;
+    const guests = guestsResult.data;
+    const workshopGuests = workshopGuestsResult.data;
+    const sadzaRecipients = sadzaRecipientsResult.data;
 
     // Format results with domain type
     const results = [
