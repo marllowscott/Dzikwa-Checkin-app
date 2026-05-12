@@ -103,13 +103,13 @@ export const Navigation = memo(() => {
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo and Brand */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
+          <Link to="/" className="flex items-center space-x-2 sm:space-x-3">
             <img
               src="/dzikwa-logo.svg"
               alt="Dzikwa Logo"
-              className="w-8 h-8 sm:w-10 sm:h-10 rounded-[7px] shadow-button"
+              className="w-8 h-8 sm:w-10 sm:h-10 rounded-[7px] shadow-button hover:scale-105 transition-transform cursor-pointer"
             />
-          </div>
+          </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex space-x-2">

@@ -36,7 +36,7 @@ export function AddSadzaRecipientForm({ onSuccess }: AddSadzaRecipientFormProps)
     setIsSubmitting(true);
 
     try {
-      await createSadzaRecipient(formData);
+      const data = await createSadzaRecipient(formData);
 
       toast({
         title: "Success",
@@ -52,8 +52,8 @@ export function AddSadzaRecipientForm({ onSuccess }: AddSadzaRecipientFormProps)
         school_name: ""
       });
 
-      // Call onSuccess callback
-      onSuccess?.();
+      // Call onSuccess callback with created data
+      onSuccess?.(data);
     } catch (error) {
       console.error('Error adding recipient:', error);
       toast({

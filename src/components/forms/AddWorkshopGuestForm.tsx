@@ -68,8 +68,8 @@ export function AddWorkshopGuestForm({ onSuccess }: AddWorkshopGuestFormProps) {
         special_notes: ""
       });
 
-      // Call onSuccess callback
-      onSuccess?.();
+      // Call onSuccess callback with created data
+      onSuccess?.(data);
     } catch (error) {
       console.error('Error adding workshop guest:', error);
       toast({

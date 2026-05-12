@@ -6,13 +6,14 @@ import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { searchAllDomains, checkPersonStatus } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
+import { Loader2, Search, AlertCircle, RefreshCw } from "lucide-react";
 
 // Unified person type for all domains
 interface Person {
   id: string;
   full_name: string;
   is_active: boolean;
-  domain: 'employee' | 'guest' | 'workshop' | 'sadza-stats';
+  domain: 'employee' | 'guest' | 'workshop' | 'sadza-stats' | 'children';
   domainLabel: string;
 }
 
@@ -28,6 +29,9 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
   const [suggestions, setSuggestions] = useState<Person[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [personStatus, setPersonStatus] = useState<{ checkedIn: boolean; domain: string; checkInId: string | null } | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const { toast } = useToast();
 
   // Check person status when selection changes
@@ -50,12 +54,18 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
   // Search all domains
   const handleSearch = useCallback(async (query: string) => {
     setSearchQuery(query);
+    setSearchError(null);
 
     if (query.length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
+      setIsSearching(false);
+      setHasSearched(false);
       return;
     }
+
+    setIsSearching(true);
+    setHasSearched(false);
 
     try {
       const results = await searchAllDomains(query);
@@ -65,9 +75,20 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
 
       setSuggestions(activeResults as Person[]);
       setShowSuggestions(true);
+      setHasSearched(true);
     } catch (error) {
       console.error('Search error:', error);
       setSuggestions([]);
+      setShowSuggestions(true); // Show error state
+      setHasSearched(true);
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+        setSearchError('Unable to connect to the server. Please check your internet connection or try again in a moment.');
+      } else {
+        setSearchError('An error occurred while searching. Please try again.');
+      }
+    } finally {
+      setIsSearching(false);
     }
   }, []);
 
@@ -77,7 +98,29 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
     setSearchQuery(person.full_name);
     setShowSuggestions(false);
     setSuggestions([]);
+    setSearchError(null);
+    setIsSearching(false);
+    setHasSearched(false);
   }, []);
+
+  // Clear search
+  const clearSearch = useCallback(() => {
+    setSearchQuery("");
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setIsSearching(false);
+    setSearchError(null);
+    setHasSearched(false);
+    setSelectedPerson(null);
+    setPersonStatus(null);
+  }, []);
+
+  // Retry search
+  const retrySearch = useCallback(() => {
+    if (searchQuery.length >= 2) {
+      handleSearch(searchQuery);
+    }
+  }, [searchQuery, handleSearch]);
 
   // Handle check-in
   const handleCheckIn = useCallback(() => {
@@ -158,6 +201,8 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
         return 'secondary';
       case 'workshop':
         return 'outline';
+      case 'children':
+        return 'secondary';
       case 'sadza-stats':
         return 'destructive';
       default:
@@ -181,33 +226,73 @@ export const CheckInForm = memo(({ onCheckIn, onCheckOut, isLoading }: CheckInFo
               Name
             </Label>
             <div className="relative">
-              <Input
-                id="personSearch"
-                type="text"
-                placeholder="Search employees, guests, workshop participants, or sadza recipients..."
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                onKeyPress={handleKeyPress}
-                className="h-10 sm:h-12 text-sm sm:text-base focus:ring-2 focus:ring-primary/50 transition-all duration-200"
-                disabled={isLoading}
-              />
+               <Input
+                 id="personSearch"
+                 type="text"
+                 placeholder="Search employees, guests, workshop participants, children, or sadza recipients..."
+                 value={searchQuery}
+                 onChange={(e) => handleSearch(e.target.value)}
+                 onKeyPress={handleKeyPress}
+                 className="h-10 sm:h-12 text-sm sm:text-base focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                 disabled={isLoading || isSearching}
+               />
 
-              {/* Suggestions Dropdown */}
-              {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-primary rounded-md shadow-lg max-h-48 overflow-y-auto z-50">
-                  {suggestions.map((person) => (
-                    <button
-                      key={person.id}
-                      type="button"
-                      onClick={() => handlePersonSelect(person)}
-                      className="w-full px-3 py-2 text-left hover:bg-muted transition-colors text-sm flex items-center justify-between"
-                    >
-                      <span>{person.full_name}</span>
-                      <Badge variant={getDomainBadgeVariant(person.domain)} className="ml-2 text-xs">
-                        {person.domainLabel}
-                      </Badge>
-                    </button>
-                  ))}
+              {/* Results Container - Fixed Height */}
+              {showSuggestions && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-primary rounded-md shadow-lg z-50 transition-all duration-200" style={{ minHeight: '120px', maxHeight: '200px' }}>
+                  <div className="p-4">
+                    {isSearching ? (
+                      // Loading State
+                      <div className="flex flex-col items-center justify-center h-20">
+                        <Loader2 className="w-6 h-6 animate-spin text-primary mb-2" />
+                        <p className="text-sm text-muted-foreground">Searching...</p>
+                      </div>
+                    ) : searchError ? (
+                      // Error State
+                      <div className="flex flex-col items-center justify-center h-20">
+                        <AlertCircle className="w-6 h-6 text-destructive mb-2" />
+                        <p className="text-sm text-center text-muted-foreground mb-3">{searchError}</p>
+                        <button
+                          onClick={retrySearch}
+                          className="flex items-center gap-2 px-3 py-1 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          Try Again
+                        </button>
+                      </div>
+                    ) : hasSearched && suggestions.length === 0 ? (
+                      // Empty State
+                      <div className="flex flex-col items-center justify-center h-20">
+                        <Search className="w-6 h-6 text-muted-foreground mb-2" />
+                        <p className="text-sm text-center text-muted-foreground mb-3">
+                          No matching name found. Please check your spelling or try a different name. If this is a new person, use the "+" button below to add them first.
+                        </p>
+                        <button
+                          onClick={clearSearch}
+                          className="px-3 py-1 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80 transition-colors"
+                        >
+                          Clear Search
+                        </button>
+                      </div>
+                    ) : (
+                      // Success State with Results
+                      <div className="max-h-32 overflow-y-auto">
+                        {suggestions.map((person) => (
+                          <button
+                            key={person.id}
+                            type="button"
+                            onClick={() => handlePersonSelect(person)}
+                            className="w-full px-3 py-2 text-left hover:bg-muted transition-colors text-sm flex items-center justify-between rounded-sm"
+                          >
+                            <span>{person.full_name}</span>
+                            <Badge variant={getDomainBadgeVariant(person.domain)} className="ml-2 text-xs">
+                              {person.domainLabel}
+                            </Badge>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

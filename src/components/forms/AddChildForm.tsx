@@ -54,8 +54,8 @@ export function AddChildForm({ onSuccess }: AddChildFormProps) {
       // Reset form
       setFormData({ full_name: "", parent_name: "", grade: "" });
 
-      // Call onSuccess callback
-      onSuccess?.();
+      // Call onSuccess callback with created data
+      onSuccess?.(data);
     } catch (error) {
       console.error('Error adding child:', error);
       toast({

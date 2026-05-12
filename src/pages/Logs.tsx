@@ -10,7 +10,7 @@ import { supabase, CheckInRecord, GuestCheckInWithGuest, WorkshopCheckInWithGues
 import { useToast } from "@/hooks/use-toast";
 
 type FilterType = "today" | "week" | "month" | "all";
-type DomainType = "employees" | "guests" | "children" | "workshop";
+type DomainType = "employees" | "guests" | "children" | "workshop" | "sadza-stats";
 
 export default function Logs() {
   const [filter, setFilter] = useState<FilterType>("today");
@@ -24,6 +24,7 @@ export default function Logs() {
     { key: "guests" as const, label: "Guests", icon: Users },
     { key: "children" as const, label: "Children", icon: Users },
     { key: "workshop" as const, label: "Workshop", icon: Users },
+    { key: "sadza-stats" as const, label: "Sadza Stats", icon: Users },
   ];
 
   const filterOptions = [
@@ -88,6 +89,20 @@ export default function Logs() {
           break;
         }
 
+        case 'sadza-stats': {
+          // Sadza recipients are not for check-in/out, show distributions instead
+          const sadzaResult = await supabase
+            .from('sadza_distributions')
+            .select(`
+              *,
+              sadza_recipients (full_name, phone, email, is_dzikwa_child, school_name)
+            `)
+            .order('distribution_date', { ascending: false });
+          records = sadzaResult.data || [];
+          error = sadzaResult.error;
+          break;
+        }
+
         default: {
           const defaultResult = await supabase
             .from('check_ins')
@@ -137,7 +152,9 @@ export default function Logs() {
     const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     return data.filter(record => {
-      const recordDate = new Date(record.check_in_time);
+      // Use appropriate date field based on domain
+      const dateField = domain === 'sadza-stats' ? 'distribution_date' : 'check_in_time';
+      const recordDate = new Date(record[dateField]);
 
       // Skip records with invalid dates
       if (isNaN(recordDate.getTime())) {
@@ -178,20 +195,36 @@ export default function Logs() {
   };
 
   const exportToCSV = () => {
-    const headers = ["User Name", "Day of Week", "Check-in Time", "Check-out Time", "Status"];
+    const headers = domain === 'sadza-stats'
+      ? ["Recipient Name", "Day of Week", "Distribution Date", "Portions", "Purpose"]
+      : ["User Name", "Day of Week", "Check-in Time", "Check-out Time", "Status"];
+
     const csvContent = [
       headers.join(","),
-      ...filteredData.map(record => [
-        domain === 'workshop'
-          ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
-          : domain === 'guests'
-            ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
-            : record.full_name || 'Unknown',
-        getDayOfWeek(record.check_in_time),
-        formatTime(record.check_in_time),
-        record.check_out_time ? formatTime(record.check_out_time) : "-",
-        record.check_out_time ? "Checked Out" : "Active"
-      ].join(","))
+      ...filteredData.map(record => {
+        if (domain === 'sadza-stats') {
+          const dateField = 'distribution_date';
+          return [
+            record.sadza_recipients?.full_name || 'Unknown',
+            getDayOfWeek(record[dateField]),
+            formatDateTime(record[dateField]),
+            record.sadza_portions || 1,
+            record.distribution_purpose || 'Community Feeding'
+          ].join(",");
+        } else {
+          return [
+            domain === 'workshop'
+              ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
+              : domain === 'guests'
+                ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
+                : record.full_name || 'Unknown',
+            getDayOfWeek(record.check_in_time),
+            formatTime(record.check_in_time),
+            record.check_out_time ? formatTime(record.check_out_time) : "-",
+            record.check_out_time ? "Checked Out" : "Active"
+          ].join(",");
+        }
+      })
     ].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv" });
@@ -303,11 +336,19 @@ export default function Logs() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-card/80 backdrop-blur-sm">
                     <TableRow>
-                      <TableHead className="font-semibold">Full Name</TableHead>
+                      <TableHead className="font-semibold">
+                        {domain === 'sadza-stats' ? 'Recipient Name' : 'Full Name'}
+                      </TableHead>
                       <TableHead className="font-semibold">Day</TableHead>
-                      <TableHead className="font-semibold">Time In</TableHead>
-                      <TableHead className="font-semibold">Time Out</TableHead>
-                      <TableHead className="font-semibold">Status</TableHead>
+                      <TableHead className="font-semibold">
+                        {domain === 'sadza-stats' ? 'Distribution Date' : 'Time In'}
+                      </TableHead>
+                      <TableHead className="font-semibold">
+                        {domain === 'sadza-stats' ? 'Portions' : 'Time Out'}
+                      </TableHead>
+                      <TableHead className="font-semibold">
+                        {domain === 'sadza-stats' ? 'Purpose' : 'Status'}
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -334,37 +375,49 @@ export default function Logs() {
                       </TableRow>
                     ) : (
                       filteredData.map((record, index) => (
-                        <TableRow
-                          key={record.id}
-                          className={cn(
-                            "hover:bg-accent/50 transition-colors duration-200",
-                            index % 2 === 0 ? "bg-card" : "bg-muted/20"
-                          )}
-                        >
-                           <TableCell className="font-medium">
-                             {domain === 'workshop'
-                               ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
-                               : domain === 'guests'
-                                 ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
-                                 : record.full_name || 'Unknown'
-                             }
-                           </TableCell>
-                          <TableCell className="font-medium text-primary">{getDayOfWeek(record.check_in_time)}</TableCell>
-                          <TableCell>{formatTime(record.check_in_time)}</TableCell>
-                          <TableCell>
-                            {record.check_out_time ? formatTime(record.check_out_time) : "-"}
+                        <TableRow key={record.id}>
+                          <TableCell className="font-medium">
+                            {domain === 'sadza-stats'
+                              ? record.sadza_recipients?.full_name || 'Unknown'
+                              : domain === 'workshop'
+                                ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
+                                : domain === 'guests'
+                                  ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
+                                  : record.full_name || 'Unknown'
+                            }
+                          </TableCell>
+                          <TableCell className="font-medium text-primary">
+                            {getDayOfWeek(domain === 'sadza-stats' ? record.distribution_date : record.check_in_time)}
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant={record.check_out_time ? "default" : "secondary"}
-                              className={cn(
-                                record.check_out_time
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-blue-100 text-blue-800"
-                              )}
-                            >
-                              {record.check_out_time ? "Checked Out" : "Active"}
-                            </Badge>
+                            {domain === 'sadza-stats'
+                              ? formatDateTime(record.distribution_date)
+                              : formatTime(record.check_in_time)
+                            }
+                          </TableCell>
+                          <TableCell>
+                            {domain === 'sadza-stats'
+                              ? record.sadza_portions || 1
+                              : record.check_out_time ? formatTime(record.check_out_time) : "-"
+                            }
+                          </TableCell>
+                          <TableCell>
+                            {domain === 'sadza-stats' ? (
+                              <Badge variant="secondary" className="bg-orange-100 text-orange-800">
+                                {record.distribution_purpose || 'Community Feeding'}
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant={record.check_out_time ? "default" : "secondary"}
+                                className={cn(
+                                  record.check_out_time
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-blue-100 text-blue-800"
+                                )}
+                              >
+                                {record.check_out_time ? "Checked Out" : "Active"}
+                              </Badge>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))

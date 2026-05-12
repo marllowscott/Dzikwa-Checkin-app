@@ -666,6 +666,26 @@ export const createSadzaRecipient = async (recipientData: {
   return data;
 };
 
+export const checkInSadzaRecipient = async (recipientId: string, portions?: number) => {
+  const { data, error } = await supabase
+    .from('sadza_distributions')
+    .insert([{
+      recipient_id: recipientId,
+      distribution_date: new Date().toISOString().split('T')[0],
+      sadza_portions: portions || 1,
+      distribution_purpose: 'Community Feeding',
+      notes: null
+    }])
+    .select(`
+      *,
+      sadza_recipients(full_name, phone, email, is_dzikwa_child, school_name)
+    `)
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
 export const getSadzaRecipients = async () => {
   return await supabase
     .from('sadza_recipients')

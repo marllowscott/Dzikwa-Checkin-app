@@ -59,8 +59,8 @@ export function AddGuestForm({ onSuccess }: AddGuestFormProps) {
       // Reset form
       setFormData({ full_name: "", email: "", phone: "", company: "", purpose: "" });
 
-      // Call onSuccess callback
-      onSuccess?.();
+      // Call onSuccess callback with created data
+      onSuccess?.(data);
     } catch (error) {
       console.error('Error adding guest:', error);
       toast({

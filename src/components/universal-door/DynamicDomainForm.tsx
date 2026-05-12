@@ -4,7 +4,8 @@ import { AddGuestForm } from "@/components/forms/AddGuestForm";
 import { AddWorkshopGuestForm } from "@/components/forms/AddWorkshopGuestForm";
 import { AddChildForm } from "@/components/forms/AddChildForm";
 import { AddSadzaRecipientForm } from "@/components/forms/AddSadzaRecipientForm";
-import { createCheckIn, checkInGuest, checkInChild, checkInWorkshop } from "@/lib/supabase";
+import { createCheckIn, checkInGuest, checkInChild, checkInSadzaRecipient } from "@/lib/supabase";
+import { checkInWorkshopGuest } from "@/lib/workshop";
 import { useToast } from "@/hooks/use-toast";
 
 interface DynamicDomainFormProps {
@@ -40,7 +41,7 @@ export function DynamicDomainForm({ selectedDomain, onClose }: DynamicDomainForm
           break;
 
         case 'workshop':
-          await checkInWorkshop(data.id);
+          await checkInWorkshopGuest(data.id, 'Standard Workshop', 'Active Workshop');
           toast({
             title: "Success",
             description: `${data.full_name} has been added and checked in`,
@@ -56,10 +57,10 @@ export function DynamicDomainForm({ selectedDomain, onClose }: DynamicDomainForm
           break;
 
         case 'sadza-stats':
-          // Sadza recipients don't have check-ins
+          await checkInSadzaRecipient(data.id, 1);
           toast({
             title: "Success",
-            description: `${data.full_name} has been added successfully`,
+            description: `${data.full_name} has been added and checked in`,
           });
           break;
 
