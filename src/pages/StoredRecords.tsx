@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase, SavedLog } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Download, FileText, Calendar, Archive, Edit, Trash2, Eye, Search, X, Save, Home, ArrowLeft } from "lucide-react";
+import { Loader2, Download, FileText, Calendar, Archive, Edit, Trash2, Eye, Search, X, Save, Home, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
@@ -35,6 +35,11 @@ export default function StoredRecords() {
   });
   const [exportDialog, setExportDialog] = useState<{ open: boolean; type: 'excel' | 'word' | 'pdf' | null }>({ open: false, type: null });
   const [selectedRange, setSelectedRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [recordsPerPage] = useState(6); // Show 6 months per page for better UX
+
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -151,6 +156,19 @@ export default function StoredRecords() {
         'July', 'August', 'September', 'October', 'November', 'December'];
       return months.indexOf(a.month) - months.indexOf(b.month);
     });
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredMonthlyData.length / recordsPerPage);
+  const startIndex = (currentPage - 1) * recordsPerPage;
+  const endIndex = startIndex + recordsPerPage;
+  const currentRecords = filteredMonthlyData.slice(startIndex, endIndex);
+
+
+
+  // Reset to first page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   const handleBackToMain = () => {
     navigate("/");
@@ -497,6 +515,7 @@ export default function StoredRecords() {
 
           {/* Search */}
           <Card className="p-4">
+
             <div className="flex items-center gap-4">
               <FileText className="w-5 h-5 text-primary" />
               <Input
@@ -505,6 +524,7 @@ export default function StoredRecords() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="max-w-sm"
               />
+
             </div>
           </Card>
 
@@ -519,7 +539,7 @@ export default function StoredRecords() {
                 </p>
               </Card>
             ) : (
-              filteredMonthlyData.map((monthData) => (
+              currentRecords.map((monthData) => (
                 <Card key={`${monthData.year}-${monthData.month}`} className="p-6">
                   <div className="flex items-center gap-3 mb-6">
                     <Calendar className="w-6 h-6 text-primary" />
@@ -591,6 +611,40 @@ export default function StoredRecords() {
                   </div>
                 </Card>
               ))
+            )}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 bg-card border-t mt-4 rounded-b-[7px]">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>
+                    Showing {startIndex + 1}-{Math.min(endIndex, filteredMonthlyData.length)} of {filteredMonthlyData.length} months
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         </div>

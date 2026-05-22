@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { createCheckIn, createCheckOut, checkInGuest, checkOutGuest, checkInChild, checkOutChild, supabase } from "@/lib/supabase";
 import { checkInWorkshopGuest, checkOutWorkshopGuest } from "@/lib/workshop";
+import { useAutomaticArchive } from "@/lib/automaticArchive";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function Index() {
@@ -16,6 +17,7 @@ export default function Index() {
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { archiveRecordOnCheckout } = useAutomaticArchive();
 
   // Floating add button handlers
   const handleAddButtonClick = () => {
@@ -131,6 +133,12 @@ export default function Index() {
           description: `Goodbye ${data?.full_name || 'Employee'}. Logged out at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
+
+        // Automatic archival
+        await archiveRecordOnCheckout('employee', personId);
+
+        // Refresh all active check-in displays across the app
+        window.dispatchEvent(new CustomEvent('refreshActiveCheckIns'));
       } else if (domain === 'guest') {
         // Find the active guest check-in
         const { data: activeCheckIn } = await supabase
@@ -155,6 +163,12 @@ export default function Index() {
           description: `Goodbye ${activeCheckIn.guests?.full_name || 'Guest'}. Logged out at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
+
+        // Automatic archival
+        await archiveRecordOnCheckout('guest', activeCheckIn.id);
+
+        // Refresh all active check-in displays across the app
+        window.dispatchEvent(new CustomEvent('refreshActiveCheckIns'));
       } else if (domain === 'workshop') {
         // Workshop guests use their own check-out system
         // Find the active workshop check-in
@@ -180,6 +194,12 @@ export default function Index() {
           description: `Goodbye ${activeCheckIn.workshop_guests?.full_name || 'Workshop Guest'}. Logged out at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
+
+        // Automatic archival
+        await archiveRecordOnCheckout('workshop', activeCheckIn.id);
+
+        // Refresh all active check-in displays across the app
+        window.dispatchEvent(new CustomEvent('refreshActiveCheckIns'));
       } else if (domain === 'children') {
         // Find the active child check-in
         const { data: activeCheckIn } = await supabase
@@ -204,6 +224,12 @@ export default function Index() {
           description: `Goodbye ${activeCheckIn.dzikwa_children?.full_name || 'Child'}. Logged out at ${new Date().toLocaleTimeString()}`,
           variant: "default",
         });
+
+        // Automatic archival
+        await archiveRecordOnCheckout('children', activeCheckIn.id);
+
+        // Refresh all active check-in displays across the app
+        window.dispatchEvent(new CustomEvent('refreshActiveCheckIns'));
       }
     } catch (error: any) {
       console.error('Check-out error:', error);

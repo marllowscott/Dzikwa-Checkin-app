@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useEffect, Suspense, lazy, useState } from "react";
 import Index from "./pages/Index";
+import { MobileDetector } from "./components/MobileDetector";
 
 // Lazy load heavy pages
 const Logs = lazy(() => import("./pages/Logs"));
@@ -20,6 +21,7 @@ const GuestStoredRecords = lazy(() => import("./pages/GuestStoredRecords"));
 const WorkshopStoredRecords = lazy(() => import("./pages/WorkshopStoredRecords"));
 const ChildrenPage = lazy(() => import("./pages/ChildrenPage"));
 const SadzaStatsPage = lazy(() => import("./pages/SadzaStatsPage"));
+const MobileRestricted = lazy(() => import("./pages/MobileRestricted"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Loading component
@@ -51,8 +53,13 @@ const AdminRouteGuard = ({ children }: { children: React.ReactNode }) => {
     shouldRedirect: location.pathname === '/admin-dashboard' && !isAdmin
   });
 
-  // List of admin routes that should be protected
+  // List of admin routes that should be protected (excluding mobile-restricted)
   const adminRoutes = ['/admin-dashboard', '/stored-records', '/logs', '/guest-signup', '/workshop', '/guest-dashboard', '/children', '/sadza-stats'];
+
+  // Skip admin check for mobile-restricted route
+  if (location.pathname === '/mobile-restricted') {
+    return <>{children}</>;
+  }
 
   // Only redirect to login if accessing admin routes without authentication
   if (adminRoutes.includes(location.pathname) && !isAdmin) {
@@ -72,8 +79,8 @@ const AdminTrigger = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
-      // Only trigger on main pages, not when already on admin pages
-      if (location.pathname.startsWith('/admin') || location.pathname === '/admin-login') {
+      // Only trigger on main pages, not when already on admin pages or mobile-restricted
+      if (location.pathname.startsWith('/admin') || location.pathname === '/admin-login' || location.pathname === '/mobile-restricted') {
         return;
       }
 
@@ -123,85 +130,92 @@ const App = () => (
           v7_relativeSplatPath: true,
         }}
       >
-        <AdminTrigger>
-          <AdminRouteGuard>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/dashboard" element={<Navigate to="/admin-login" replace />} />
-              <Route path="/logs" element={
-                <Suspense fallback={<PageLoader />}>
-                  <Logs />
-                </Suspense>
-              } />
-              <Route path="/checkin-test" element={
-                <Suspense fallback={<PageLoader />}>
-                  <CheckInTest />
-                </Suspense>
-              } />
-              <Route path="/admin-login" element={
-                <Suspense fallback={<PageLoader />}>
-                  <AdminLogin />
-                </Suspense>
-              } />
-              <Route path="/guest-signup" element={
-                <Suspense fallback={<PageLoader />}>
-                  <GuestSignUp />
-                </Suspense>
-              } />
-              <Route path="/admin-dashboard" element={
-                <Suspense fallback={<PageLoader />}>
-                  <AdminDashboard />
-                </Suspense>
-              } />
-              <Route path="/stored-records" element={
-                <Suspense fallback={<PageLoader />}>
-                  <StoredRecords />
-                </Suspense>
-              } />
-              <Route path="/animated-logo" element={
-                <Suspense fallback={<PageLoader />}>
-                  <AnimatedLogoShowcase />
-                </Suspense>
-              } />
-              <Route path="/workshop" element={
-                <Suspense fallback={<PageLoader />}>
-                  <WorkshopPage />
-                </Suspense>
-              } />
-              <Route path="/guest-dashboard" element={
-                <Suspense fallback={<PageLoader />}>
-                  <GuestDashboard />
-                </Suspense>
-              } />
-              <Route path="/guest-stored-records" element={
-                <Suspense fallback={<PageLoader />}>
-                  <GuestStoredRecords />
-                </Suspense>
-              } />
-              <Route path="/workshop-stored-records" element={
-                <Suspense fallback={<PageLoader />}>
-                  <WorkshopStoredRecords />
-                </Suspense>
-              } />
-              <Route path="/children" element={
-                <Suspense fallback={<PageLoader />}>
-                  <ChildrenPage />
-                </Suspense>
-              } />
-              <Route path="/sadza-stats" element={
-                <Suspense fallback={<PageLoader />}>
-                  <SadzaStatsPage />
-                </Suspense>
-              } />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={
-                <Suspense fallback={<PageLoader />}>
-                  <NotFound />
-                </Suspense>
-              } />
-            </Routes>
-          </AdminRouteGuard>
-        </AdminTrigger>
+        <MobileDetector>
+          <AdminTrigger>
+            <AdminRouteGuard>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/dashboard" element={<Navigate to="/admin-login" replace />} />
+                <Route path="/logs" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Logs />
+                  </Suspense>
+                } />
+                <Route path="/checkin-test" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <CheckInTest />
+                  </Suspense>
+                } />
+                <Route path="/admin-login" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <AdminLogin />
+                  </Suspense>
+                } />
+                <Route path="/guest-signup" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <GuestSignUp />
+                  </Suspense>
+                } />
+                <Route path="/admin-dashboard" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <AdminDashboard />
+                  </Suspense>
+                } />
+                <Route path="/stored-records" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <StoredRecords />
+                  </Suspense>
+                } />
+                <Route path="/animated-logo" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <AnimatedLogoShowcase />
+                  </Suspense>
+                } />
+                <Route path="/workshop" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <WorkshopPage />
+                  </Suspense>
+                } />
+                <Route path="/guest-dashboard" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <GuestDashboard />
+                  </Suspense>
+                } />
+                <Route path="/guest-stored-records" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <GuestStoredRecords />
+                  </Suspense>
+                } />
+                <Route path="/workshop-stored-records" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <WorkshopStoredRecords />
+                  </Suspense>
+                } />
+                <Route path="/children" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <ChildrenPage />
+                  </Suspense>
+                } />
+                <Route path="/sadza-stats" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <SadzaStatsPage />
+                  </Suspense>
+                } />
+                <Route path="/mobile-restricted" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <MobileRestricted />
+                  </Suspense>
+                } />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <NotFound />
+                  </Suspense>
+                } />
+              </Routes>
+            </AdminRouteGuard>
+          </AdminTrigger>
+        </MobileDetector>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

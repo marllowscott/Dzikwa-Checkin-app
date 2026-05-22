@@ -46,12 +46,26 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('🔄 Refreshing active check-ins after checkout');
+      fetchData();
+    };
+
+    window.addEventListener('refreshActiveCheckIns', handleRefresh);
+
+    return () => {
+      window.removeEventListener('refreshActiveCheckIns', handleRefresh);
+    };
+  }, []);
+
   const fetchData = async () => {
     try {
       setLoading(true);
       const { data: records, error } = await supabase
         .from('check_ins')
         .select('*')
+        .is('check_out_time', null) // Only get active check-ins
         .order('check_in_time', { ascending: false });
 
       if (error) {
@@ -83,12 +97,14 @@ export default function Dashboard() {
 
   const filteredData = useMemo(() => {
     return data.filter(record => {
+      // Only show active check-ins (people who haven't checked out yet)
+      const isActive = !record.check_out_time;
       const matchesName = !filters.fullName || record.full_name.toLowerCase().includes(filters.fullName.toLowerCase());
       const recordDate = new Date(record.check_in_time).toISOString().split('T')[0];
       const matchesDateFrom = !filters.dateFrom || recordDate >= filters.dateFrom;
       const matchesDateTo = !filters.dateTo || recordDate <= filters.dateTo;
 
-      return matchesName && matchesDateFrom && matchesDateTo;
+      return isActive && matchesName && matchesDateFrom && matchesDateTo;
     });
   }, [data, filters]);
 
@@ -306,7 +322,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-  
+
         {/* Edit Modal */}
         <Dialog open={!!editingRecord} onOpenChange={() => setEditingRecord(null)}>
           <DialogContent>
@@ -349,7 +365,7 @@ export default function Dashboard() {
             )}
           </DialogContent>
         </Dialog>
-  
+
         {/* Add Modal */}
         <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
           <DialogContent>

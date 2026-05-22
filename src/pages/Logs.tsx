@@ -17,6 +17,7 @@ export default function Logs() {
   const [domain, setDomain] = useState<DomainType>("employees");
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAllChildren, setShowAllChildren] = useState(false);
   const { toast } = useToast();
 
   const domainOptions = [
@@ -47,6 +48,7 @@ export default function Logs() {
           const employeeResult = await supabase
             .from('check_ins')
             .select('*')
+            .is('check_out_time', null) // Only get active check-ins
             .order('check_in_time', { ascending: false });
           records = employeeResult.data || [];
           error = employeeResult.error;
@@ -60,6 +62,7 @@ export default function Logs() {
               *,
               guests (full_name, email, phone, company)
             `)
+            .is('check_out_time', null) // Only get active check-ins
             .order('check_in_time', { ascending: false });
           records = guestResult.data || [];
           error = guestResult.error;
@@ -69,7 +72,11 @@ export default function Logs() {
         case 'children': {
           const childResult = await supabase
             .from('child_check_ins')
-            .select('*')
+            .select(`
+              *,
+              dzikwa_children (full_name, age, grade)
+            `)
+            .is('check_out_time', null) // Only get active check-ins
             .order('check_in_time', { ascending: false });
           records = childResult.data || [];
           error = childResult.error;
@@ -83,6 +90,7 @@ export default function Logs() {
               *,
               workshop_guests (full_name, email, company, workshop_type)
             `)
+            .is('check_out_time', null) // Only get active check-ins
             .order('check_in_time', { ascending: false });
           records = workshopResult.data || [];
           error = workshopResult.error;
@@ -145,6 +153,25 @@ export default function Logs() {
     fetchData();
   }, [fetchData]);
 
+  // Reset show all state when domain changes
+  useEffect(() => {
+    setShowAllChildren(false);
+  }, [domain]);
+
+  // Listen for check-out events to refresh active check-ins
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('🔄 Refreshing logs after checkout');
+      fetchData();
+    };
+
+    window.addEventListener('refreshActiveCheckIns', handleRefresh);
+
+    return () => {
+      window.removeEventListener('refreshActiveCheckIns', handleRefresh);
+    };
+  }, [fetchData]);
+
   const filteredData = useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -174,6 +201,14 @@ export default function Logs() {
       }
     });
   }, [data, filter]);
+
+  // Determine displayed data (limit to 6 for children unless show all is clicked)
+  const displayedData = useMemo(() => {
+    if (domain === 'children' && !showAllChildren && filteredData.length > 6) {
+      return filteredData.slice(0, 6);
+    }
+    return filteredData;
+  }, [filteredData, domain, showAllChildren]);
 
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -215,9 +250,11 @@ export default function Logs() {
           return [
             domain === 'workshop'
               ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
-              : domain === 'guests'
-                ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
-                : record.full_name || 'Unknown',
+              : domain === 'children'
+                ? (record as any).dzikwa_children?.full_name || 'Unknown'
+                : domain === 'guests'
+                  ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
+                  : record.full_name || 'Unknown',
             getDayOfWeek(record.check_in_time),
             formatTime(record.check_in_time),
             record.check_out_time ? formatTime(record.check_out_time) : "-",
@@ -325,7 +362,7 @@ export default function Logs() {
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-foreground">
-                  Records ({filteredData.length})
+                  Records ({domain === 'children' && !showAllChildren && filteredData.length > 6 ? `${displayedData.length} of ${filteredData.length}` : filteredData.length})
                 </h2>
                 <Badge variant="secondary" className="text-sm">
                   {filter.charAt(0).toUpperCase() + filter.slice(1)}
@@ -375,16 +412,18 @@ export default function Logs() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredData.map((record, index) => (
+                      displayedData.map((record, index) => (
                         <TableRow key={record.id}>
                           <TableCell className="font-medium">
                             {domain === 'sadza-stats'
                               ? record.sadza_recipients?.full_name || 'Unknown'
                               : domain === 'workshop'
                                 ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
-                                : domain === 'guests'
-                                  ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
-                                  : record.full_name || 'Unknown'
+                                : domain === 'children'
+                                  ? (record as any).dzikwa_children?.full_name || 'Unknown'
+                                  : domain === 'guests'
+                                    ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
+                                    : record.full_name || 'Unknown'
                             }
                           </TableCell>
                           <TableCell className="font-medium text-primary">
@@ -445,7 +484,7 @@ export default function Logs() {
                     </p>
                   </div>
                 ) : (
-                  filteredData.map((record, index) => (
+                  displayedData.map((record, index) => (
                     <Card key={record.id} className="p-4 bg-gradient-card shadow-card rounded-[7px]">
                       <div className="space-y-3">
                         {/* Name and Status Row */}
@@ -456,9 +495,11 @@ export default function Logs() {
                                 ? record.sadza_recipients?.full_name || 'Unknown'
                                 : domain === 'workshop'
                                   ? (record as WorkshopCheckInWithGuest).workshop_guests?.full_name || 'Unknown'
-                                  : domain === 'guests'
-                                    ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
-                                    : record.full_name || 'Unknown'
+                                  : domain === 'children'
+                                    ? (record as any).dzikwa_children?.full_name || 'Unknown'
+                                    : domain === 'guests'
+                                      ? (record as GuestCheckInWithGuest).guests?.full_name || record.full_name || 'Unknown'
+                                      : record.full_name || 'Unknown'
                               }
                             </p>
                             <p className="text-sm text-primary font-medium">
@@ -518,6 +559,18 @@ export default function Logs() {
               </div>
             </div>
           </Card>
+
+          {/* Show More Button for Children */}
+          {domain === 'children' && filteredData.length > 6 && !showAllChildren && (
+            <div className="flex justify-center mt-6">
+              <ProfessionalButton
+                onClick={() => setShowAllChildren(true)}
+                className="px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-[7px] shadow-button hover:shadow-card transition-all duration-200"
+              >
+                Show More Records ({filteredData.length - 6} remaining)
+              </ProfessionalButton>
+            </div>
+          )}
         </div>
       </div>
     </div>

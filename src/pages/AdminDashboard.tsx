@@ -16,6 +16,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, LineChart, Line } from "recharts";
 import { supabase, CheckInRecord, FileRecord, SavedLog } from "@/lib/supabase";
+import { useAutomaticArchive } from "@/lib/automaticArchive";
 
 interface MonthlyData {
   month: string;
@@ -116,6 +117,7 @@ export default function AdminDashboard() {
   const [filteredData, setFilteredData] = useState<CheckInRecord[]>([]);
 
   const { toast } = useToast();
+  const { archiveRecordOnCheckout } = useAutomaticArchive();
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
@@ -414,6 +416,9 @@ export default function AdminDashboard() {
 
       if (error) throw error;
 
+      // Automatic archival
+      await archiveRecordOnCheckout('guest', checkInId);
+
       toast({
         title: "Success",
         description: `${guestName} has been checked out`,
@@ -525,6 +530,9 @@ export default function AdminDashboard() {
 
       if (error) throw error;
 
+      // Automatic archival
+      await archiveRecordOnCheckout('children', checkInId);
+
       toast({
         title: "Success",
         description: `${childName} has been checked out`,
@@ -537,6 +545,7 @@ export default function AdminDashboard() {
         title: "Error",
         description: "Failed to check out child",
         variant: "destructive",
+
       });
     }
   };
@@ -862,65 +871,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Save today's logs
-  const saveTodaysLogs = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const todaysRecords = data.filter(record =>
-        new Date(record.check_in_time).toISOString().split('T')[0] === today
-      );
-
-      if (todaysRecords.length === 0) {
-        toast({
-          title: "No Records",
-          description: "No records found for today",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const summary = `Total records: ${todaysRecords.length}\nChecked in: ${todaysRecords.filter(r => !r.check_out_time).length}\nChecked out: ${todaysRecords.filter(r => r.check_out_time).length}`;
-
-      // Get current month in YYYY-MM format
-      const currentDate = new Date();
-      const currentMonth = currentDate.toISOString().slice(0, 7); // YYYY-MM
-
-      const { error } = await supabase
-        .from('saved_logs')
-        .insert({
-          date: today,
-          month: currentMonth,
-          total_records: todaysRecords.length,
-          log_data: todaysRecords,
-          summary_content: summary,
-          saved_by: 'admin'
-        });
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: `Today's ${todaysRecords.length} records saved successfully`,
-      });
-
-      // Clear today's records to prepare for next day
-      const updatedData = data.filter(record =>
-        new Date(record.check_in_time).toISOString().split('T')[0] !== today
-      );
-      setData(updatedData);
-      setFilteredData(updatedData);
-
-      loadSavedLogs();
-    } catch (error) {
-      console.error('Error saving logs:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save today's logs",
-        variant: "destructive",
-      });
-    }
-  };
-
   // File operations
   const downloadFile = async (filePath: string, fileName: string) => {
     try {
@@ -1062,7 +1012,7 @@ export default function AdminDashboard() {
 
     return (
       <Badge className={colorMap[type] || 'bg-gray-100 text-gray-800'}>
-        {type || 'Unknown'}
+        {fileType?.split('/')[1]?.toUpperCase() || 'FILE'}
       </Badge>
     );
   };
@@ -1100,6 +1050,22 @@ export default function AdminDashboard() {
 
     checkAdminAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Listen for check-out events to refresh active check-ins
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('🔄 Refreshing admin active check-ins after checkout');
+      fetchActiveCheckIns();
+      fetchGuestCheckIns();
+      fetchChildCheckIns();
+    };
+
+    window.addEventListener('refreshActiveCheckIns', handleRefresh);
+
+    return () => {
+      window.removeEventListener('refreshActiveCheckIns', handleRefresh);
+    };
   }, []);
 
   // Calculate stats when data changes
@@ -1194,9 +1160,13 @@ export default function AdminDashboard() {
               </p>
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
-              <Button variant="outline" onClick={handleBackToMain} className="flex-1 sm:flex-initial">
+              <Button variant="outline" onClick={() => navigate('/')} className="flex-1 sm:flex-initial">
                 <Home className="w-4 h-4 mr-2 text-primary" />
                 Back to Main
+              </Button>
+              <Button variant="outline" onClick={() => navigate('/stored-records')} className="flex-1 sm:flex-initial">
+                <FileText className="w-4 h-4 mr-2 text-primary" />
+                Record Storage
               </Button>
               <Button variant="outline" onClick={handleLogout} className="flex-1 sm:flex-initial">
                 <LogoutIcon className="w-4 h-4 mr-2 text-primary" />
@@ -1619,7 +1589,7 @@ export default function AdminDashboard() {
                               })()}
                               {savedLogs.length === 0 && (
                                 <div className="text-center text-muted-foreground py-4">
-                                  No saved daily logs yet. Use "Save Logs" to archive today's records.
+                                  No saved daily logs yet. Records are automatically archived on checkout.
                                 </div>
                               )}
                             </div>
@@ -1666,10 +1636,6 @@ export default function AdminDashboard() {
                         <Button variant="default" size="sm" onClick={() => setShowAddModal(true)} className="text-xs sm:text-sm flex-1 sm:flex-none">
                           <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                           Add Record
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={saveTodaysLogs} className="text-xs sm:text-sm flex-1 sm:flex-none">
-                          <Save className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                          Save Logs
                         </Button>
                         <div className="flex gap-1 flex-1 sm:flex-none">
                           <Button variant="outline" size="sm" onClick={exportToExcel} className="text-xs sm:text-sm flex-1">

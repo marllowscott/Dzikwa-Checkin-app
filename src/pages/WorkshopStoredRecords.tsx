@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Archive, FileText, Download, Trash2 } from "lucide-react";
+import { ArrowLeft, Archive, FileText, Download, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
@@ -32,10 +32,19 @@ export default function WorkshopStoredRecords() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [recordsPerPage] = useState(8); // Show 8 records per page for workshop logs
+
   // Load saved workshop logs
   useEffect(() => {
     loadSavedLogs();
   }, []);
+
+  // Reset to first page when data changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [savedLogs]);
 
   const loadSavedLogs = async () => {
     try {
@@ -93,6 +102,12 @@ export default function WorkshopStoredRecords() {
     const monthOrder = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     return monthOrder.indexOf(b.month) - monthOrder.indexOf(a.month);
   });
+
+  // Pagination logic
+  const totalPages = Math.ceil(sortedMonthlyData.length / recordsPerPage);
+  const startIndex = (currentPage - 1) * recordsPerPage;
+  const endIndex = startIndex + recordsPerPage;
+  const currentRecords = sortedMonthlyData.slice(startIndex, endIndex);
 
   // Get unique days for selected month
   const getDaysForMonth = (monthData: any) => {
@@ -312,7 +327,7 @@ export default function WorkshopStoredRecords() {
           </Button>
         </div>
 
-        {savedLogs.length === 0 ? (
+        {currentRecords.length === 0 ? (
           <Card className="p-8 text-center">
             <Archive className="w-12 h-12 text-primary mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">No Stored Workshop Records</h3>
@@ -329,7 +344,7 @@ export default function WorkshopStoredRecords() {
         ) : (
           <div className="space-y-6">
             {/* Monthly Logs */}
-            {sortedMonthlyData.map((monthData: any, monthIndex: number) => (
+            {currentRecords.map((monthData: any, monthIndex: number) => (
               <Card key={`${monthData.year}-${monthData.month}`} className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div>
@@ -471,6 +486,40 @@ export default function WorkshopStoredRecords() {
                 )}
               </Card>
             ))}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 bg-card border-t mt-4 rounded-b-[7px]">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>
+                    Showing {startIndex + 1}-{Math.min(endIndex, sortedMonthlyData.length)} of {sortedMonthlyData.length} months
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

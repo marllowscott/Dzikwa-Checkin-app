@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Download, Search, Eye, Trash2, FileSpreadsheet, FileText, Calendar as CalendarIcon } from "lucide-react";
+import { ArrowLeft, Download, Search, Eye, Trash2, FileSpreadsheet, FileText, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 
@@ -38,6 +38,10 @@ export default function GuestStoredRecords() {
     const [exportType, setExportType] = useState<'excel' | 'pdf' | 'word'>('excel');
     const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined } | undefined>(undefined);
 
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [recordsPerPage] = useState(10); // Show 10 records per page for guest logs
+
     // Helper function to get day of week
     const getDayOfWeek = (dateString: string) => {
         const date = new Date(dateString);
@@ -47,6 +51,11 @@ export default function GuestStoredRecords() {
     useEffect(() => {
         loadSavedGuestLogs();
     }, []);
+
+    // Reset to first page when search or filter changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, selectedMonth]);
 
     const loadSavedGuestLogs = async () => {
         try {
@@ -331,6 +340,12 @@ export default function GuestStoredRecords() {
         return matchesSearch && matchesMonth;
     });
 
+    // Pagination logic
+    const totalPages = Math.ceil(filteredLogs.length / recordsPerPage);
+    const startIndex = (currentPage - 1) * recordsPerPage;
+    const endIndex = startIndex + recordsPerPage;
+    const currentRecords = filteredLogs.slice(startIndex, endIndex);
+
     // Get unique months for filter
     const uniqueMonths = Array.from(new Set(savedGuestLogs.map(log => log.month))).sort();
 
@@ -404,6 +419,7 @@ export default function GuestStoredRecords() {
                                 ))}
                             </SelectContent>
                         </Select>
+
                     </div>
                 </Card>
 
@@ -411,63 +427,106 @@ export default function GuestStoredRecords() {
                 <Card className="p-4">
                     {loading ? (
                         <div className="text-center py-8">Loading guest logs...</div>
-                    ) : filteredLogs.length === 0 ? (
+                    ) : currentRecords.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">
                             No guest logs found
                         </div>
                     ) : (
-                        <div className="rounded-md border overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Month</TableHead>
-                                        <TableHead>Records</TableHead>
-                                        <TableHead>Saved At</TableHead>
-                                        <TableHead>Summary</TableHead>
-                                        <TableHead className="text-right">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredLogs.map((log) => (
-                                        <TableRow key={log.id}>
-                                            <TableCell className="font-medium">
-                                                {new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant="secondary">{log.month}</Badge>
-                                            </TableCell>
-                                            <TableCell>{log.total_records}</TableCell>
-                                            <TableCell>
-                                                {new Date(log.saved_at).toLocaleDateString()}
-                                            </TableCell>
-                                            <TableCell className="max-w-xs truncate">
-                                                {log.summary_content}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <div className="flex gap-2 justify-end">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleViewLog(log)}
-                                                    >
-                                                        <Eye className="w-4 h-4 mr-1" />
-                                                        View
-                                                    </Button>
-                                                    <Button
-                                                        variant="destructive"
-                                                        size="sm"
-                                                        onClick={() => handleDeleteLog(log.id, log.date)}
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
+                        <>
+                            <div className="rounded-md border overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Date</TableHead>
+                                            <TableHead>Month</TableHead>
+                                            <TableHead>Records</TableHead>
+                                            <TableHead>Saved At</TableHead>
+                                            <TableHead>Summary</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {currentRecords.map((log) => (
+                                            <TableRow key={log.id}>
+                                                <TableCell className="font-medium">
+                                                    {new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="secondary">{log.month}</Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline">{log.total_records}</Badge>
+                                                </TableCell>
+                                                <TableCell className="text-sm text-muted-foreground">
+                                                    {new Date(log.saved_at).toLocaleString()}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="max-w-xs truncate" title={log.summary_content}>
+                                                        {log.summary_content.substring(0, 50)}...
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                setViewingLog(log);
+                                                                setShowViewDialog(true);
+                                                            }}
+                                                        >
+                                                            <Eye className="w-4 h-4 mr-1" />
+                                                            View
+                                                        </Button>
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            onClick={() => handleDeleteLog(log.id, log.date)}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            {/* Pagination Controls */}
+                            {totalPages > 1 && (
+                                <div className="flex items-center justify-between px-4 py-3 bg-card border-t mt-4 rounded-b-[7px]">
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <span>
+                                            Showing {startIndex + 1}-{Math.min(endIndex, filteredLogs.length)} of {filteredLogs.length} records
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                            disabled={currentPage === 1}
+                                        >
+                                            <ChevronLeft className="w-4 h-4" />
+                                            Previous
+                                        </Button>
+                                        <span className="text-sm">
+                                            Page {currentPage} of {totalPages}
+                                        </span>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                            disabled={currentPage === totalPages}
+                                        >
+                                            Next
+                                            <ChevronRight className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
                 </Card>
             </div>

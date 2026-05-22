@@ -12,6 +12,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase, Guest, GuestCheckIn } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
+import { useAutomaticArchive } from "@/lib/automaticArchive";
 import { Users, RefreshCw, Plus, Edit, Trash2, LogOut, ArrowLeft, Download, Search, FileSpreadsheet, FileText, Save } from "lucide-react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -19,6 +20,7 @@ import jsPDF from 'jspdf';
 export default function GuestDashboard() {
     const navigate = useNavigate();
     const { toast } = useToast();
+    const { archiveRecordOnCheckout } = useAutomaticArchive();
 
     // Helper function to get day of week
     const getDayOfWeek = (dateString: string) => {
@@ -56,6 +58,24 @@ export default function GuestDashboard() {
     useEffect(() => {
         fetchGuests();
         fetchGuestCheckIns();
+    }, []);
+
+    useEffect(() => {
+        fetchGuestCheckIns();
+    }, []);
+
+    // Listen for check-out events to refresh active check-ins
+    useEffect(() => {
+        const handleRefresh = () => {
+            console.log('🔄 Refreshing guest check-ins after checkout');
+            fetchGuestCheckIns();
+        };
+
+        window.addEventListener('refreshActiveCheckIns', handleRefresh);
+
+        return () => {
+            window.removeEventListener('refreshActiveCheckIns', handleRefresh);
+        };
     }, []);
 
     const fetchGuests = async () => {
@@ -241,6 +261,9 @@ export default function GuestDashboard() {
 
             if (error) throw error;
 
+            // Automatic archival
+            await archiveRecordOnCheckout('guest', checkInId);
+
             toast({
                 title: "Success",
                 description: `${guestName} has been checked out`
@@ -257,106 +280,7 @@ export default function GuestDashboard() {
         }
     };
 
-    // Save today's guest logs
-    const saveTodaysGuestLogs = async () => {
-        try {
-            const today = new Date().toISOString().split('T')[0];
-            const todaysGuestCheckIns = guestCheckIns.filter(checkIn => {
-                const recordDate = new Date(checkIn.check_in_time);
-                return !isNaN(recordDate.getTime()) && recordDate.toISOString().split('T')[0] === today;
-            });
 
-            if (todaysGuestCheckIns.length === 0) {
-                toast({
-                    title: "No Records",
-                    description: "No guest check-ins found for today",
-                    variant: "destructive",
-                });
-                return;
-            }
-
-            const summary = `Total guest check-ins: ${todaysGuestCheckIns.length}\nChecked in: ${todaysGuestCheckIns.filter(c => !c.check_out_time).length}\nChecked out: ${todaysGuestCheckIns.filter(c => c.check_out_time).length}`;
-
-            // Validate and clean the data before sending
-            const cleanedRecords = todaysGuestCheckIns.map(checkIn => ({
-                id: checkIn.id,
-                guest_id: checkIn.guest_id,
-                check_in_time: checkIn.check_in_time || new Date().toISOString(),
-                check_out_time: checkIn.check_out_time || null,
-                purpose: checkIn.purpose || 'Unknown',
-                created_at: checkIn.created_at || new Date().toISOString(),
-                guests: checkIn.guests
-            }));
-
-            console.log('📝 Saving guest logs:', {
-                date: today,
-                totalRecords: cleanedRecords.length,
-                sampleRecord: cleanedRecords[0]
-            });
-
-            const { error } = await supabase
-                .from('saved_guest_logs')
-                .insert({
-                    date: today,
-                    month: new Date(today).toLocaleString('default', { month: 'long' }),
-                    total_records: cleanedRecords.length,
-                    log_data: cleanedRecords,
-                    json_content: JSON.stringify(cleanedRecords, null, 2),
-                    summary_content: summary
-                });
-
-            if (error) {
-                console.error(' Supabase error:', error);
-                console.error(' Error details:', JSON.stringify(error, null, 2));
-                console.error(' Error message:', error.message);
-                console.error(' Error code:', error.code);
-                console.error(' Error details:', error.details);
-                console.error(' Error hint:', error.hint);
-
-                toast({
-                    title: "Database Error",
-                    description: `Failed to save: ${error.message || JSON.stringify(error) || 'Unknown database error'}`,
-                    variant: "destructive",
-                });
-                return;
-            }
-
-            toast({
-                title: "Success",
-                description: `Today's ${cleanedRecords.length} guest check-ins saved successfully`,
-            });
-
-            // Reset guest check-ins for fresh start tomorrow
-            const { error: resetError } = await supabase
-                .from('guest_check_ins')
-                .delete()
-                .in('id', cleanedRecords.map(record => record.id));
-
-            if (resetError) {
-                console.error('Error resetting guest check-ins:', resetError);
-                toast({
-                    title: "Warning",
-                    description: "Guest logs saved but failed to reset guest list for tomorrow",
-                    variant: "destructive",
-                });
-            } else {
-                console.log('✅ Guest check-ins reset for fresh start tomorrow');
-                toast({
-                    title: "Success",
-                    description: `Today's ${cleanedRecords.length} guest check-ins saved and guest list reset for tomorrow`,
-                });
-            }
-
-            fetchGuestCheckIns(); // Refresh the guest check-ins to show cleared list
-        } catch (error) {
-            console.error('💥 Unexpected error saving guest logs:', error);
-            toast({
-                title: "Error",
-                description: "Failed to save today's guest logs. Please try again.",
-                variant: "destructive",
-            });
-        }
-    };
 
     // Advanced export with date range
     const handleExportWithDateRange = async () => {
@@ -558,16 +482,12 @@ export default function GuestDashboard() {
                                 <h3 className="text-lg font-heading">Currently Checked In Guests</h3>
                                 <p className="text-sm text-muted-foreground">Guests currently in the premises</p>
                             </div>
-                            <div className="flex gap-2">
-                                <Button variant="outline" onClick={fetchGuestCheckIns} disabled={loadingCheckIns}>
-                                    <RefreshCw className={`h-4 w-4 mr-2 ${loadingCheckIns ? 'animate-spin' : ''}`} />
-                                    Refresh
-                                </Button>
-                                <Button onClick={saveTodaysGuestLogs} className="flex items-center gap-2">
-                                    <Save className="h-4 w-4" />
-                                    Save Today's Guest Logs
-                                </Button>
-                            </div>
+                             <div className="flex gap-2">
+                                 <Button variant="outline" onClick={fetchGuestCheckIns} disabled={loadingCheckIns}>
+                                     <RefreshCw className={`h-4 w-4 mr-2 ${loadingCheckIns ? 'animate-spin' : ''}`} />
+                                     Refresh
+                                 </Button>
+                             </div>
                         </div>
 
                         {loadingCheckIns ? (

@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Users, ArrowLeft, Save, Archive, UserCheck, Plus, LogOut, Search, RefreshCw, Edit, Trash2, Download, Calendar } from "lucide-react";
 import { createWorkshopGuest, checkInWorkshopGuest, getWorkshopCheckIns, checkOutWorkshopGuest } from "@/lib/workshop";
 import { supabase } from "@/lib/supabase";
+import { useAutomaticArchive } from "@/lib/automaticArchive";
 
 export default function WorkshopPage() {
   const [activeTab, setActiveTab] = useState("checkin");
@@ -41,6 +42,7 @@ export default function WorkshopPage() {
     currentlyCheckedIn: 0
   });
   const { toast } = useToast();
+  const { archiveRecordOnCheckout } = useAutomaticArchive();
   const navigate = useNavigate();
 
   // Load workshop data
@@ -49,9 +51,23 @@ export default function WorkshopPage() {
     loadWorkshopGuests();
   }, []);
 
+  // Listen for check-out events to refresh active check-ins
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('🔄 Refreshing workshop check-ins after checkout');
+      loadWorkshopData();
+    };
+
+    window.addEventListener('refreshActiveCheckIns', handleRefresh);
+
+    return () => {
+      window.removeEventListener('refreshActiveCheckIns', handleRefresh);
+    };
+  }, []);
+
   const loadWorkshopData = async () => {
     try {
-      const { data: checkIns, error } = await getWorkshopCheckIns();
+      const { data: checkIns, error } = await getActiveWorkshopCheckIns(); // Only get active check-ins
       if (error) {
         console.error('Error fetching workshop check-ins:', error);
         return;
@@ -60,10 +76,10 @@ export default function WorkshopPage() {
       const validCheckIns = checkIns || [];
       setWorkshopCheckIns(validCheckIns);
 
-      // Calculate stats
+      // Calculate stats - all are now active check-ins
       const totalGuests = validCheckIns.length;
-      const activeGuests = validCheckIns.filter(guest => !guest.check_out_time).length;
-      const currentlyCheckedIn = validCheckIns.filter(guest => !guest.check_out_time).length;
+      const activeGuests = validCheckIns.length;
+      const currentlyCheckedIn = validCheckIns.length;
 
       setStats({
         totalGuests,
@@ -154,7 +170,7 @@ export default function WorkshopPage() {
 
   const handleWorkshopCheckOut = async (checkInId: string, guestName: string) => {
     try {
-      const { data } = await checkOutWorkshopGuest(checkInId);
+      const { data, error } = await checkOutWorkshopGuest(checkInId);
 
       if (error) {
         console.error('Workshop checkout error:', error);
@@ -165,6 +181,9 @@ export default function WorkshopPage() {
         });
         return;
       }
+
+      // Automatic archival
+      await archiveRecordOnCheckout('workshop', checkInId);
 
       toast({
         title: "Success",
@@ -978,194 +997,194 @@ export default function WorkshopPage() {
           </Tabs>
         </Card>
 
-    <div className="mt-6 text-center">
-      <div className="flex items-center justify-center gap-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={saveTodaysWorkshopLogs}
-          className="flex items-center gap-2"
-        >
-          <Save className="h-4 w-4" />
-          Save Today's Workshop Logs
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setLoadingCheckIns(true);
-            loadWorkshopData().finally(() => setLoadingCheckIns(false));
-          }}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${loadingCheckIns ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground opacity-50">
-        Admin access: Double-tap 'A' key
-      </p>
-    </div>
+        <div className="mt-6 text-center">
+          <div className="flex items-center justify-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={saveTodaysWorkshopLogs}
+              className="flex items-center gap-2"
+            >
+              <Save className="h-4 w-4" />
+              Save Today's Workshop Logs
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setLoadingCheckIns(true);
+                loadWorkshopData().finally(() => setLoadingCheckIns(false));
+              }}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${loadingCheckIns ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground opacity-50">
+            Admin access: Double-tap 'A' key
+          </p>
+        </div>
       </div >
 
-    {/* Add Guest Modal */ }
-    < Dialog open = { showAddModal } onOpenChange = { setShowAddModal } >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit Workshop Participant</DialogTitle>
-          <DialogDescription>
-            Update workshop participant information
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Left Column */}
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="guest-full_name">Full Name *</Label>
-                <Input
-                  id="guest-full_name"
-                  value={newGuest.full_name}
-                  onChange={(e) => setNewGuest({ ...newGuest, full_name: e.target.value })}
-                  placeholder="Enter guest's full name"
-                  className="h-10"
-                />
+      {/* Add Guest Modal */}
+      < Dialog open={showAddModal} onOpenChange={setShowAddModal} >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Workshop Participant</DialogTitle>
+            <DialogDescription>
+              Update workshop participant information
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Left Column */}
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="guest-full_name">Full Name *</Label>
+                  <Input
+                    id="guest-full_name"
+                    value={newGuest.full_name}
+                    onChange={(e) => setNewGuest({ ...newGuest, full_name: e.target.value })}
+                    placeholder="Enter guest's full name"
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="guest-email">Email Address</Label>
+                  <Input
+                    id="guest-email"
+                    type="email"
+                    value={newGuest.email}
+                    onChange={(e) => setNewGuest({ ...newGuest, email: e.target.value })}
+                    placeholder="guest.email@example.com"
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="guest-phone">Phone Number</Label>
+                  <Input
+                    id="guest-phone"
+                    type="tel"
+                    value={newGuest.phone}
+                    onChange={(e) => setNewGuest({ ...newGuest, phone: e.target.value })}
+                    placeholder="+263 123 4567"
+                    className="h-10"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="guest-email">Email Address</Label>
-                <Input
-                  id="guest-email"
-                  type="email"
-                  value={newGuest.email}
-                  onChange={(e) => setNewGuest({ ...newGuest, email: e.target.value })}
-                  placeholder="guest.email@example.com"
-                  className="h-10"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="guest-phone">Phone Number</Label>
-                <Input
-                  id="guest-phone"
-                  type="tel"
-                  value={newGuest.phone}
-                  onChange={(e) => setNewGuest({ ...newGuest, phone: e.target.value })}
-                  placeholder="+263 123 4567"
-                  className="h-10"
-                />
-              </div>
-            </div>
 
-            {/* Right Column */}
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="guest-company">Company/Organization</Label>
-                <Input
-                  id="guest-company"
-                  value={newGuest.company}
-                  onChange={(e) => setNewGuest({ ...newGuest, company: e.target.value })}
-                  placeholder="Company or organization name"
-                  className="h-10"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="guest-workshop_type">Workshop Type</Label>
-                <select
-                  id="guest-workshop_type"
-                  value={newGuest.workshop_type}
-                  onChange={(e) => setNewGuest({ ...newGuest, workshop_type: e.target.value })}
-                  className="w-full p-2 h-10 border border-input rounded-md bg-background"
-                >
-                  <option value="Standard Workshop">Standard Workshop</option>
-                  <option value="Esteemed Workshop">Esteemed Workshop</option>
-                  <option value="VIP Workshop">VIP Workshop</option>
-                  <option value="Training Session">Training Session</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="guest-notes">Special Notes</Label>
-                <Textarea
-                  id="guest-notes"
-                  value={newGuest.special_notes}
-                  onChange={(e) => setNewGuest({ ...newGuest, special_notes: e.target.value })}
-                  placeholder="Any special requirements or notes"
-                  rows={2}
-                  className="resize-none"
-                />
+              {/* Right Column */}
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="guest-company">Company/Organization</Label>
+                  <Input
+                    id="guest-company"
+                    value={newGuest.company}
+                    onChange={(e) => setNewGuest({ ...newGuest, company: e.target.value })}
+                    placeholder="Company or organization name"
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="guest-workshop_type">Workshop Type</Label>
+                  <select
+                    id="guest-workshop_type"
+                    value={newGuest.workshop_type}
+                    onChange={(e) => setNewGuest({ ...newGuest, workshop_type: e.target.value })}
+                    className="w-full p-2 h-10 border border-input rounded-md bg-background"
+                  >
+                    <option value="Standard Workshop">Standard Workshop</option>
+                    <option value="Esteemed Workshop">Esteemed Workshop</option>
+                    <option value="VIP Workshop">VIP Workshop</option>
+                    <option value="Training Session">Training Session</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="guest-notes">Special Notes</Label>
+                  <Textarea
+                    id="guest-notes"
+                    value={newGuest.special_notes}
+                    onChange={(e) => setNewGuest({ ...newGuest, special_notes: e.target.value })}
+                    placeholder="Any special requirements or notes"
+                    rows={2}
+                    className="resize-none"
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-6">
-          <Button variant="outline" onClick={() => setShowAddModal(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleAddGuest} className="flex-1">
-            Add Participant
-          </Button>
-        </div>
-      </DialogContent>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => setShowAddModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddGuest} className="flex-1">
+              Add Participant
+            </Button>
+          </div>
+        </DialogContent>
       </Dialog >
 
 
-    {/* Export Dialog */ }
-    < Dialog open = { showExportDialog } onOpenChange = { setShowExportDialog } >
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Export Workshop Logs</DialogTitle>
-          <DialogDescription>
-            Select date range and export format for workshop logs
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium">Date Range</label>
-            <div className="border rounded-md p-3">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-muted-foreground">From Date</label>
-                  <input
-                    type="date"
-                    value={dateRange.from ? dateRange.from.toISOString().split('T')[0] : ''}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value ? new Date(e.target.value) : undefined }))}
-                    className="w-full p-2 border rounded"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">To Date</label>
-                  <input
-                    type="date"
-                    value={dateRange.to ? dateRange.to.toISOString().split('T')[0] : ''}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value ? new Date(e.target.value) : undefined }))}
-                    className="w-full p-2 border rounded"
-                  />
+      {/* Export Dialog */}
+      < Dialog open={showExportDialog} onOpenChange={setShowExportDialog} >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Export Workshop Logs</DialogTitle>
+            <DialogDescription>
+              Select date range and export format for workshop logs
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Date Range</label>
+              <div className="border rounded-md p-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-muted-foreground">From Date</label>
+                    <input
+                      type="date"
+                      value={dateRange.from ? dateRange.from.toISOString().split('T')[0] : ''}
+                      onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value ? new Date(e.target.value) : undefined }))}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">To Date</label>
+                    <input
+                      type="date"
+                      value={dateRange.to ? dateRange.to.toISOString().split('T')[0] : ''}
+                      onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value ? new Date(e.target.value) : undefined }))}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {dateRange.from && dateRange.to && (
-            <div className="text-center text-sm text-muted-foreground">
-              Selected: {dateRange.from.toLocaleDateString()} - {dateRange.to.toLocaleDateString()}
+            {dateRange.from && dateRange.to && (
+              <div className="text-center text-sm text-muted-foreground">
+                Selected: {dateRange.from.toLocaleDateString()} - {dateRange.to.toLocaleDateString()}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowExportDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleExportWithDateRange}
+                disabled={!dateRange.from || !dateRange.to}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Workshop Logs
+              </Button>
             </div>
-          )}
-
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowExportDialog(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleExportWithDateRange}
-              disabled={!dateRange.from || !dateRange.to}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export Workshop Logs
-            </Button>
           </div>
-        </div>
-      </DialogContent>
+        </DialogContent>
       </Dialog >
     </div >
   );

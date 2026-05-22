@@ -638,7 +638,15 @@ export const checkOutChild = async (checkInId: string) => {
 export const getChildCheckIns = async () => {
   return await supabase
     .from('child_check_ins')
-    .select('*, dzikwa_children!full_name')
+    .select('*, dzikwa_children!inner(full_name)')
+    .order('check_in_time', { ascending: false });
+};
+
+export const getActiveChildCheckIns = async () => {
+  return await supabase
+    .from('child_check_ins')
+    .select('*, dzikwa_children!inner(full_name)')
+    .is('check_out_time', null) // Only get active check-ins
     .order('check_in_time', { ascending: false });
 };
 
